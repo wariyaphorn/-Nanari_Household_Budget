@@ -579,6 +579,7 @@
           <input type="date" id="ledger-search-to">
         </div>
       </div>
+      <div id="ledger-summary" class="muted" style="margin:10px 0;font-size:14px;"></div>
       <div id="ledger"></div>
     </div>
   </section>
@@ -2415,7 +2416,17 @@ function renderLedger() {
     });
   }
   list.sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
-  if (list.length === 0) { ledger.innerHTML = '<p class="empty">' + ((ledgerSearch.trim() || ledgerSearchFrom || ledgerSearchTo) ? 'ไม่พบรายการที่ตรงกับเงื่อนไขที่เลือก' : 'ยังไม่มีรายการ') + '</p>'; return; }
+  const summaryEl = document.getElementById('ledger-summary');
+  if (list.length === 0) {
+    if (summaryEl) summaryEl.textContent = '';
+    ledger.innerHTML = '<p class="empty">' + ((ledgerSearch.trim() || ledgerSearchFrom || ledgerSearchTo) ? 'ไม่พบรายการที่ตรงกับเงื่อนไขที่เลือก' : 'ยังไม่มีรายการ') + '</p>';
+    return;
+  }
+  if (summaryEl) {
+    const incomeSum = list.filter(e => getCat(e.category).kind === 'income').reduce((s, e) => s + e.amount, 0);
+    const expenseSum = list.filter(e => getCat(e.category).kind === 'expense').reduce((s, e) => s + e.amount, 0);
+    summaryEl.textContent = `พบ ${list.length} รายการ · รายรับรวม ฿${incomeSum.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})} · รายจ่ายรวม ฿${expenseSum.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+  }
   const totalCount = list.length;
   const visibleList = list.slice(0, ledgerShowCount);
   visibleList.forEach(e => {
