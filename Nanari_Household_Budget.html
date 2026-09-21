@@ -1,0 +1,3320 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>สมุดบัญชีครัวเรือน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script>
+  // --- Firebase-backed storage (replaces Claude's window.storage so this file can run anywhere) ---
+  var firebaseConfig = {
+    apiKey: "AIzaSyAc4fTRghYTArUAXkIFWPvIGbdt9xlbz3g",
+    authDomain: "household-budget-c31ce.firebaseapp.com",
+    projectId: "household-budget-c31ce",
+    storageBucket: "household-budget-c31ce.firebasestorage.app",
+    messagingSenderId: "905564068568",
+    appId: "1:905564068568:web:e8e227e3922f0e8d8a15ad",
+    measurementId: "G-PBHHL9749D"
+  };
+  firebase.initializeApp(firebaseConfig);
+  var __db = firebase.firestore();
+
+  // "รหัสครัวเรือน" (household ID) = shared secret so this file shows the same data
+  // on every device / for every person who enters the same code. Saved locally so
+  // it's only asked once per device.
+  window.HOUSEHOLD_ID = localStorage.getItem('household-id') || '';
+  window.setHouseholdId = function(id) {
+    id = (id || '').trim();
+    if (!id) return false;
+    localStorage.setItem('household-id', id);
+    window.HOUSEHOLD_ID = id;
+    return true;
+  };
+  if (!window.HOUSEHOLD_ID) {
+    var __entered = window.prompt(
+      'ตั้งรหัสครัวเรือน (Household ID)\n\n' +
+      'ใส่รหัสอะไรก็ได้ที่จำง่าย แล้วใช้รหัสเดียวกันนี้ในทุกอุปกรณ์ (ของคุณและของสามี) ' +
+      'เพื่อให้เห็นข้อมูลชุดเดียวกัน\n\nตั้งรหัสใหม่ หรือใส่รหัสเดิมถ้าเคยตั้งไว้แล้ว:',
+      ''
+    );
+    if (!window.setHouseholdId(__entered)) {
+      window.setHouseholdId('default-household');
+    }
+  }
+
+  function __storageDocRef(key) {
+    return __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc(key);
+  }
+
+  window.storage = {
+    get: async function(key) {
+      var snap = await __storageDocRef(key).get();
+      if (!snap.exists) return null;
+      var d = snap.data();
+      return { value: d && typeof d.value === 'string' ? d.value : null };
+    },
+    set: async function(key, value) {
+      await __storageDocRef(key).set({
+        value: value,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }
+  };
+</script>
+<style>
+  :root {
+    --ink: #1E3A5F;
+    --ink-light: #3D5A7A;
+    --paper: #F6F3EC;
+    --card: #FFFFFF;
+    --gold: #B8901F;
+    --sage: #43705F;
+    --rust: #B14A34;
+    --text-primary: #23303C;
+    --text-secondary: #62707E;
+    --text-muted: #94A0AB;
+    --border: #E4DFD1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    font-family: 'Sarabun', sans-serif;
+    color: var(--text-primary);
+    line-height: 1.6;
+    padding: 1.5rem 1rem 4rem;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
+  h1 { font-family: 'Kanit', sans-serif; font-weight: 600; font-size: 26px; margin: 0; color: var(--ink); }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+  .sync-note { font-size: 12px; color: var(--sage); background: #EAF1EC; padding: 6px 12px; border-radius: 20px; }
+  h2 { font-family: 'Kanit', sans-serif; font-weight: 500; font-size: 16px; color: var(--ink); margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.25rem; }
+  section { margin-bottom: 1.75rem; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 1.75rem; }
+  .metric { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.1rem; }
+  .metric .label { font-size: 12px; color: var(--text-secondary); margin: 0 0 6px; }
+  .metric .value { font-family: 'Kanit', sans-serif; font-size: 22px; font-weight: 500; margin: 0; }
+  .metric.income .value { color: var(--sage); }
+  .metric.expense .value { color: var(--rust); }
+  .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .chart-box { position: relative; height: 220px; }
+  .upcoming-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+  .upcoming-item:first-child { border-top: none; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .upcoming-item .name { flex: 1; font-size: 14px; }
+  .upcoming-item .date { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+  .upcoming-item .amt { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .goal-card, .card-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1.1rem; margin-bottom: 8px; }
+  .row-between { display: flex; justify-content: space-between; align-items: center; }
+  .bar-bg { background: var(--paper); border-radius: 6px; height: 8px; overflow: hidden; margin: 8px 0; }
+  .bar-fill { height: 100%; background: var(--sage); }
+  .muted { color: var(--text-muted); font-size: 12px; }
+  .secondary-text { color: var(--text-secondary); font-size: 12px; }
+  .btn { border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 7px 14px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-primary); }
+  .btn:hover { background: var(--paper); }
+  .btn-primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn-primary:hover { background: var(--ink-light); }
+  .btn-danger-outline { color: var(--rust); border-color: var(--rust); }
+  input, select {
+    font-family: 'Sarabun'; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: #fff; color: var(--text-primary); width: 100%;
+  }
+  input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+  input[type="checkbox"] { width: auto; flex-shrink: 0; }
+  .form-grid { display: grid; gap: 8px; margin-bottom: 8px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+  .tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+  .tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .ledger-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .ledger-item:first-child { border-top: none; }
+  .badge { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 15px; font-weight: 600; }
+  .del-btn { border: none; background: transparent; cursor: pointer; color: var(--text-muted); font-size: 16px; padding: 4px; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+  .page { display: none; }
+  .page.active { display: block; }
+  .page-tabs {
+    display: flex; gap: 6px; overflow-x: auto; margin-bottom: 1.25rem; padding-bottom: 4px;
+    position: sticky; top: 0; background: var(--paper); z-index: 10; padding-top: 4px;
+  }
+  .page-tab {
+    border: 1px solid var(--border); background: var(--card); border-radius: 20px;
+    padding: 8px 16px; font-size: 13px; font-family: 'Sarabun'; cursor: pointer;
+    color: var(--text-secondary); white-space: nowrap; flex-shrink: 0;
+  }
+  .page-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  @media (max-width: 520px) { .g2, .g3, .charts { grid-template-columns: 1fr; } h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>สมุดบัญชีครัวเรือน</h1>
+      <p class="subtitle" id="updated-note">กำลังโหลดข้อมูล...</p>
+    </div>
+    <span class="sync-note" id="household-id-note" style="cursor:pointer;" title="คลิกเพื่อดู/เปลี่ยนรหัสครัวเรือน">รหัสครัวเรือน: <span id="household-id-display"></span> (แตะเพื่อเปลี่ยน)</span>
+  </header>
+
+  <nav class="page-tabs">
+    <button class="page-tab active" data-page="overview">ภาพรวม</button>
+    <button class="page-tab" data-page="cards">บัตร/รายจ่ายประจำ</button>
+    <button class="page-tab" data-page="savings">เป้าหมาย</button>
+    <button class="page-tab" data-page="wallets">กระเป๋า/บัญชี</button>
+    <button class="page-tab" data-page="settings">ตั้งค่า</button>
+    <button class="page-tab" data-page="entries">บันทึก/รายการ</button>
+  </nav>
+
+  <div id="page-overview" class="page active">
+  <section>
+    <div class="month-nav" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <button class="btn" id="month-prev">◀</button>
+      <span id="month-label" style="font-family:'Kanit';font-weight:500;font-size:16px;color:var(--ink);"></span>
+      <button class="btn" id="month-next">▶</button>
+    </div>
+    <div class="metrics">
+      <div class="metric income"><p class="label">รายรับเดือนนี้ (เงินเข้าจริง)</p><p class="value" id="m-income">฿0</p></div>
+      <div class="metric expense"><p class="label">รายจ่ายเดือนนี้ (เงินออกจริง)</p><p class="value" id="m-expense">฿0</p></div>
+      <div class="metric"><p class="label">คงเหลือสุทธิเดือนนี้</p><p class="value" id="m-balance">฿0</p></div>
+      <div class="metric expense"><p class="label">ค้างจ่ายจากเดือนก่อน (บัตรยังไม่จ่าย)</p><p class="value" id="m-outstanding-prev">฿0</p></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><p class="label">เงินออมทั้งหมด</p><p class="value" id="m-savings-total">฿0</p></div>
+      <div class="metric income"><p class="label">เงินออมที่ไม่ล็อก</p><p class="value" id="m-savings-available">฿0</p></div>
+      <div class="metric expense"><p class="label">เงินออมที่ล็อกไว้</p><p class="value" id="m-savings-locked">฿0</p></div>
+      <div class="metric"><p class="label">เงินออมที่ไม่ระบุ</p><p class="value" id="m-savings-unspecified">฿0</p></div>
+    </div>
+    <div class="metrics">
+      <div class="metric"><p class="label">ใช้จ่ายทั้งหมด</p><p class="value" id="m-spending-total">฿0</p></div>
+      <div class="metric income"><p class="label">ใช้จ่ายไม่ล็อก</p><p class="value" id="m-spending-available">฿0</p></div>
+      <div class="metric expense"><p class="label">ใช้จ่ายล็อก</p><p class="value" id="m-spending-locked">฿0</p></div>
+      <div class="metric"><p class="label">ใช้จ่ายที่ไม่ระบุ</p><p class="value" id="m-spending-unspecified">฿0</p></div>
+    </div>
+    <div class="card">
+      <h2>ภาพรวมรายจ่าย</h2>
+      <div class="tabs">
+        <button class="tab active" id="expense-view-month">ตามเดือนที่ซื้อ</button>
+        <button class="tab" id="expense-view-cycle">ตามรอบการจ่ายจริง</button>
+      </div>
+      <div id="expense-view-month-wrap" class="charts">
+        <p id="month-view-total" style="grid-column:1/-1;font-weight:600;margin:0 0 4px;">รวม: ฿0</p>
+        <div>
+          <p class="secondary-text" style="margin:0 0 6px;">ตามหมวดหมู่</p>
+          <div class="chart-box"><canvas id="chart-cat"></canvas></div>
+          <div id="chart-cat-legend"></div>
+        </div>
+        <div>
+          <p class="secondary-text" style="margin:0 0 6px;">ตามคน</p>
+          <div class="chart-box"><canvas id="chart-member"></canvas></div>
+          <div id="chart-member-legend"></div>
+        </div>
+      </div>
+      <div id="expense-view-cycle-wrap" style="display:none;">
+        <p class="muted" style="margin:0 0 10px;">รวมรายจ่ายเงินสด/โอนของเดือนนี้ + บิลบัตรเครดิตที่ถูกกดชำระในเดือนนี้ (ตามรายการจริงที่อยู่ในบิลนั้น) เป็นก้อนเดียว</p>
+        <p id="cycle-view-total" style="font-weight:600;margin:0 0 10px;">รวม: ฿0</p>
+        <div class="charts">
+          <div>
+            <p class="secondary-text" style="margin:0 0 6px;">ตามหมวดหมู่</p>
+            <div class="chart-box"><canvas id="chart-cycle-cat"></canvas></div>
+            <div id="cycle-cat-legend"></div>
+          </div>
+          <div>
+            <p class="secondary-text" style="margin:0 0 6px;">ตามคน</p>
+            <div class="chart-box"><canvas id="chart-cycle-member"></canvas></div>
+            <div id="cycle-member-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>กำหนดชำระที่ใกล้ถึง</h2>
+      <div id="upcoming"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>ประวัติรายเดือน (เงินเข้า-ออกจริง)</h2>
+      <div id="monthly-history"></div>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-cards" class="page">
+  <section>
+    <h2>บัตรเครดิต</h2>
+    <div id="cards-summary"></div>
+    <div id="cards"></div>
+    <div class="card">
+      <div class="form-grid g2">
+        <input type="text" id="c-name" placeholder="ชื่อบัตร เช่น KTC">
+        <select id="c-owner"></select>
+      </div>
+      <div class="form-grid g3">
+        <div>
+          <p class="muted" style="margin:0 0 4px;">วันที่เริ่มนับยอด</p>
+          <input type="date" id="c-cyclestart">
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 4px;">วันที่ปิดนับยอด</p>
+          <input type="date" id="c-closedate">
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 4px;">วันที่กำหนดจ่ายเงิน</p>
+          <input type="date" id="c-duedate">
+        </div>
+      </div>
+      <button class="btn btn-primary" id="c-add">+ เพิ่มบัตร</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>นำเข้าบิลบัตรเครดิต (AI ช่วยอ่าน)</h2>
+      <div class="form-grid g2">
+        <select id="bi-card"></select>
+        <select id="bi-wallet"></select>
+      </div>
+      <input type="file" id="bi-file" accept="image/*,.pdf" style="margin-bottom:8px;display:block;">
+      <button class="btn btn-primary" id="bi-analyze">วิเคราะห์บิล</button>
+      <p class="muted" id="bi-status" style="margin-top:8px;"></p>
+      <div id="bi-results"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>รายจ่ายประจำ (Fix Expense)</h2>
+    <div id="fixed-expenses-summary"></div>
+    <div id="fixed-expenses"></div>
+    <div class="card">
+      <div class="form-grid g2">
+        <input type="text" id="x-name" placeholder="ชื่อ เช่น ค่าเน็ตบ้าน AIS">
+        <input type="number" id="x-amount" placeholder="จำนวนเงิน" min="0" step="0.01">
+      </div>
+      <div class="form-grid g2">
+        <select id="x-freq">
+          <option value="monthly">รายเดือน</option>
+          <option value="yearly">รายปี</option>
+        </select>
+        <select id="x-category"></select>
+      </div>
+      <div class="form-grid g2">
+        <select id="x-member"></select>
+        <input type="date" id="x-due" placeholder="ครบกำหนดครั้งถัดไป">
+      </div>
+      <button class="btn btn-primary" id="x-add">+ เพิ่มรายจ่ายประจำ</button>
+      <p class="muted" style="margin-top:6px;">ใช้กรอกทิ้งไว้ก่อนว่ามีค่าใช้จ่ายประจำอะไรบ้าง วันครบกำหนดไม่บังคับ พอถึงเวลาจ่ายจริงค่อยกดปุ่ม "บันทึกว่าจ่ายแล้ว" ทีหลัง</p>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-savings" class="page">
+  <section>
+    <h2>เป้าหมาย</h2>
+    <button class="btn btn-primary" id="bulk-log-open" style="margin-bottom:10px;">บันทึกยอดหลายเป้าหมายพร้อมกัน</button>
+    <div id="bulk-log-form"></div>
+    <div id="goals"></div>
+    <div class="card">
+      <div class="form-grid g2">
+        <select id="g-kind">
+          <option value="saving">เงินออม</option>
+          <option value="periodic">ออมค่าใช้จ่าย (เช่น ประกัน, ค่าส่วนกลาง)</option>
+          <option value="debt">หนี้ (เช่น ยืมเงินคนในบ้าน)</option>
+        </select>
+        <input type="text" id="g-name" placeholder="ชื่อ เช่น คืนเงิน Lalynn">
+      </div>
+      <div class="form-grid g2">
+        <input type="number" id="g-target" placeholder="ยอดเป้าหมาย (ไม่บังคับ)" min="0" step="0.01">
+        <input type="date" id="g-due">
+      </div>
+      <div class="form-grid g2">
+        <input type="number" id="g-initial" placeholder="ยอดสะสม ณ ปัจจุบัน (ถ้ามี)" min="0" step="0.01">
+        <input type="number" id="g-monthly" placeholder="ยอดต่องวด/เดือน (ไม่บังคับ)" min="0" step="0.01">
+      </div>
+      <div class="form-grid g2">
+        <select id="g-account"></select>
+        <select id="g-member"></select>
+      </div>
+      <div class="form-grid g2">
+        <select id="g-mainaccount"></select>
+        <div id="g-withdrawable-wrap">
+          <select id="g-withdrawable">
+            <option value="">สถานะการดึงมาใช้ (ไม่ระบุ)</option>
+            <option value="yes">ดึงมาใช้ได้ในกรณีจำเป็น</option>
+            <option value="no">ห้ามดึงมาใช้ (ล็อกไว้)</option>
+          </select>
+          <p class="muted" id="g-withdrawable-note" style="display:none;margin:4px 0 0;">มีกระเป๋าเงินแล้ว สถานะจะตามกระเป๋าอัตโนมัติ</p>
+        </div>
+      </div>
+      <datalist id="main-account-list"></datalist>
+      <button class="btn btn-primary" id="g-add">+ เพิ่ม</button>
+      <p class="muted" style="margin-top:6px;">เลือก "หนี้" สำหรับกรณียืมเงินคนในบ้านแล้วผ่อนคืนเป็นงวด · ช่องวันที่คือกำหนดชำระครั้งถัดไป · ยอดสะสม ณ ปัจจุบันใช้กรณีมีอยู่ก่อนเริ่มระบบนี้ (ทั้งหมดไม่บังคับ)</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สรุปยอดตามประเภท</h2>
+      <div id="goal-type-summary"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สรุปยอดเงินออมตามสถานะการดึงมาใช้</h2>
+      <div id="withdrawable-summary"></div>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-settings" class="page">
+  <section>
+    <div class="card">
+      <h2>สมาชิกในบ้าน (แก้ชื่อ / เพิ่ม / ลบ ได้)</h2>
+      <div id="members-manager"></div>
+      <div class="add-row">
+        <input type="text" id="m-name" placeholder="เพิ่มสมาชิกใหม่ เช่น ชื่อจริงของคุณ">
+        <button class="btn btn-primary" id="m-add">+ เพิ่ม</button>
+      </div>
+      <p class="muted" style="margin-top:6px;">แก้ชื่อในช่องแล้วกดออกนอกช่อง (Tab/Enter) เพื่อบันทึก ตัวเลือก "ลูกชายฝาแฝด (รวมกัน)" ใช้สำหรับค่าใช้จ่ายที่นับรวมของแฝดทั้งคู่</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>หมวดหมู่ (แก้ชื่อ / เพิ่ม / ลบ ได้)</h2>
+      <div id="category-manager"></div>
+      <div class="form-grid g2">
+        <input type="text" id="cat-name" placeholder="เพิ่มหมวดหมู่ใหม่ เช่น ค่าเดินทาง">
+        <select id="cat-kind">
+          <option value="expense">รายจ่าย</option>
+          <option value="income">รายรับ</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="cat-add">+ เพิ่ม</button>
+      <p class="muted" style="margin-top:6px;">แก้ชื่อในช่องแล้วกดออกนอกช่อง (Tab/Enter) เพื่อบันทึก ลบได้ตราบใดที่ยังเหลืออย่างน้อย 1 หมวด</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>กฎจับคู่ร้านค้า (สำหรับนำเข้าบิลบัตรเครดิต)</h2>
+      <div id="merchant-rules-manager"></div>
+      <div class="form-grid g2">
+        <input type="text" id="mr-keyword" placeholder="คำในชื่อร้าน เช่น BIGC, Big C">
+        <select id="mr-category"></select>
+      </div>
+      <div class="form-grid g2">
+        <select id="mr-member"></select>
+        <button class="btn btn-primary" id="mr-add">+ เพิ่มกฎ</button>
+      </div>
+      <p class="muted" style="margin-top:6px;">สอนระบบไว้ล่วงหน้าว่าร้านไหนเป็นหมวด/คนไหน เช่น ตั้งคำว่า "BIGC" ให้เป็นหมวดของใช้เด็ก + ลูกฝาแฝด พอนำเข้าบิลที่มีชื่อร้าน BigC จะจับหมวดให้อัตโนมัติ (ยังแก้ทีละรายการได้ก่อนบันทึกจริงเสมอ)</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สำรองข้อมูล</h2>
+      <p class="muted">ดาวน์โหลดข้อมูลทั้งหมด (บัตร, รายจ่ายประจำ, เป้าหมาย, กระเป๋าเงิน, บัญชี, รายการ, สมาชิก, หมวดหมู่ ฯลฯ) เก็บไว้เป็นไฟล์ ถ้าเกิดปัญหาข้อมูลหายอีก จะได้นำกลับมาใส่คืนได้</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <button class="btn btn-primary" id="export-data">⬇ Export ข้อมูลทั้งหมด</button>
+        <label class="btn" style="cursor:pointer;display:inline-flex;align-items:center;">⬆ เลือกไฟล์ Import
+          <input type="file" id="import-file" accept=".json" style="display:none;">
+        </label>
+      </div>
+      <div id="import-confirm" style="display:none;margin-top:10px;">
+        <p style="color:var(--rust);font-size:13px;margin:0 0 8px;">การนำเข้าจะ<strong>เขียนทับข้อมูลปัจจุบันทั้งหมด</strong> ต้องการดำเนินการต่อไหม?</p>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" id="import-cancel">ยกเลิก</button>
+          <button class="btn btn-primary" id="import-confirm-btn">ยืนยันนำเข้า (เขียนทับ)</button>
+        </div>
+      </div>
+      <p class="muted" id="backup-status" style="margin-top:8px;"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>กู้คืนรายจ่ายเก่าจากประวัติการรีเซ็ต</h2>
+      <p class="muted">ก่อนหน้านี้กด "จ่ายแล้ว รีเซ็ต" จะลบรายการเดือนเก่าทิ้ง ทำให้ "รายจ่ายเดือนนี้"/"ประวัติรายเดือน" ของเดือนก่อนๆ ขาดหายไป กดปุ่มนี้เพื่อดูรายการประวัติทั้งหมด เลือกเฉพาะอันที่อยากกู้คืนกลับเป็นรายจ่าย (เป็นการกู้คืนแบบ "รวมยอดในวันที่รีเซ็ต" ไม่ใช่แยกทีละเดือนแบบเป๊ะๆ เพราะรายการต้นฉบับถูกลบถาวรไปแล้ว)</p>
+      <button class="btn btn-primary" id="restore-history-btn" style="margin-top:8px;">ดูรายการที่กู้คืนได้</button>
+      <div id="restore-history-form"></div>
+      <p class="muted" id="restore-history-status" style="margin-top:8px;"></p>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-wallets" class="page">
+  <section>
+    <div class="card">
+      <h2>ตั้งค่าเริ่มต้น</h2>
+      <p class="muted" style="margin:0 0 6px;">กระเป๋าเงินเริ่มต้น ใช้เป็นค่า default ตอนเลือกช่องทางหัก/ชำระ ในหลายจุดของระบบ (บันทึกยอดเป้าหมาย, ชำระบัตรเครดิต, จ่ายรายจ่ายประจำ) ยังแก้เป็นอย่างอื่นได้ทุกครั้ง</p>
+      <select id="default-bulk-wallet"></select>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>กระเป๋าเงิน (แก้ไข / เพิ่ม / ลบ ได้)</h2>
+      <div id="wallets-manager"></div>
+      <div class="form-grid g2">
+        <input type="text" id="w-name" placeholder="ชื่อกระเป๋า เช่น Annual Bills">
+        <input type="number" id="w-initial" placeholder="ยอดเริ่มต้น (ก่อนใช้ระบบ)" min="0" step="0.01">
+      </div>
+      <div class="form-grid g2">
+        <select id="w-owner"></select>
+        <select id="w-type">
+          <option value="spending">กระเป๋าใช้จ่าย</option>
+          <option value="saving">กระเป๋าออม/สำรอง</option>
+        </select>
+      </div>
+      <div class="form-grid g2">
+        <select id="w-mainaccount"></select>
+        <select id="w-locked">
+          <option value="">สถานะการดึงมาใช้ (ไม่ระบุ)</option>
+          <option value="no">ดึงมาใช้ได้ในกรณีจำเป็น</option>
+          <option value="yes">ล็อกไว้ (ห้ามดึงมาใช้)</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="w-add">+ เพิ่มกระเป๋า</button>
+      <p class="muted" style="margin-top:6px;">เลือกกระเป๋านี้จากลิสต์ได้ทุกที่ในระบบ (บันทึกรายการ, เป้าหมาย, ชำระบัตร ฯลฯ) แทนการพิมพ์ชื่อเอง ป้องกันสะกดไม่ตรงกัน</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สรุปยอดกระเป๋าเงินตามสถานะการดึงมาใช้</h2>
+      <div id="wallet-status-summary"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>บัญชี (แก้ไข / เพิ่ม / ลบ ได้)</h2>
+      <div id="mainaccounts-manager"></div>
+      <div class="form-grid g2">
+        <input type="text" id="ma-name" placeholder="ชื่อบัญชี เช่น SCB Boss">
+        <select id="ma-owner"></select>
+      </div>
+      <button class="btn btn-primary" id="ma-add">+ เพิ่มบัญชี</button>
+      <p class="muted" style="margin-top:6px;">บัญชีธนาคารจริงที่กระเป๋าเงิน/เป้าหมายอ้างอิงถึง เลือกจากลิสต์แทนการพิมพ์เอง ป้องกันสะกดไม่ตรงกัน</p>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-entries" class="page">
+  <section>
+    <div class="card">
+      <h2>บันทึกรายการ</h2>
+      <div class="form-grid g2">
+        <input type="date" id="f-date">
+        <select id="f-category"></select>
+      </div>
+      <div id="f-goal-wrap" style="display:none;margin-bottom:8px;"><select id="f-goal"></select></div>
+      <div class="form-grid g2">
+        <input type="number" id="f-amount" placeholder="จำนวนเงิน" min="0" step="0.01">
+        <div>
+          <div id="f-member-group" style="display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--border);border-radius:8px;padding:8px;min-height:38px;"></div>
+        </div>
+      </div>
+      <p class="muted" style="margin:-4px 0 8px;">เลือกได้มากกว่า 1 คน ระบบจะหารค่าใช้จ่ายเท่าๆ กันและลงแยกรายการให้ (เศษที่หารไม่ลงตัวไปอยู่ที่คนแรกที่เลือก)</p>
+      <div class="form-grid g2">
+        <select id="f-payment"></select>
+        <select id="f-account"></select>
+      </div>
+      <div class="add-row">
+        <input type="text" id="f-note" placeholder="เช่น ค่านม, ค่าแพมเพิส, ค่าหนังสือ">
+        <button class="btn btn-primary" id="f-add">+ เพิ่ม</button>
+      </div>
+      <p id="f-error" style="color:var(--rust);font-size:13px;display:none;margin:8px 0 0;">กรอกจำนวนเงินให้ถูกต้องก่อนกดเพิ่ม</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Export รายการ (CSV)</h2>
+      <div class="form-grid g2">
+        <div>
+          <p class="muted" style="margin:0 0 4px;">ตั้งแต่วันที่</p>
+          <input type="date" id="ex-from">
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 4px;">ถึงวันที่</p>
+          <input type="date" id="ex-to">
+        </div>
+      </div>
+      <select id="ex-card" style="margin-bottom:8px;"></select>
+      <button class="btn btn-primary" id="ex-export">⬇ Export เป็น CSV</button>
+      <p class="muted" id="ex-status" style="margin-top:8px;"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <div class="tabs">
+        <button class="tab active" id="tab-all">ทั้งหมด</button>
+        <button class="tab" id="tab-income">รายรับ</button>
+        <button class="tab" id="tab-expense">รายจ่าย</button>
+      </div>
+      <input type="text" id="ledger-search" placeholder="ค้นหา เช่น ชื่อร้าน, หมวดหมู่, คน, กระเป๋าเงิน">
+      <div class="form-grid g2">
+        <div>
+          <p class="muted" style="margin:0 0 4px;">ตั้งแต่วันที่</p>
+          <input type="date" id="ledger-search-from">
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 4px;">ถึงวันที่</p>
+          <input type="date" id="ledger-search-to">
+        </div>
+      </div>
+      <div id="ledger"></div>
+    </div>
+  </section>
+  </div>
+</div>
+
+<script>
+const defaultCategories = () => [
+  { key: 'salary', label: 'เงินเดือน / รายรับ', kind: 'income', color: '#43705F' },
+  { key: 'daily', label: 'อาหาร / ของใช้ในบ้าน', kind: 'expense', color: '#B8901F' },
+  { key: 'personal', label: 'ของใช้ส่วนตัว / ของใช้เด็ก', kind: 'expense', color: '#7A5FA6' },
+  { key: 'education', label: 'การศึกษา / หนังสือ', kind: 'expense', color: '#5B7A9A' },
+  { key: 'debt', label: 'หนี้สิน / ผ่อนรถ', kind: 'expense', color: '#B14A34' },
+  { key: 'insurance', label: 'ประกัน', kind: 'expense', color: '#3B7EA6' },
+  { key: 'saving', label: 'เงินออม / เงินสำรอง', kind: 'expense', color: '#5C9C82' },
+  { key: 'other', label: 'อื่นๆ', kind: 'expense', color: '#94A0AB' }
+];
+let categories = [];
+let catMap = {};
+const categoryColors = ['#43705F', '#3B7EA6', '#B8901F', '#7A5FA6', '#B14A34', '#5C9C82', '#5B7A9A', '#94A0AB'];
+function refreshCatMap() { catMap = Object.fromEntries(categories.map(c => [c.key, c])); }
+function getCat(key) { return catMap[key] || { key, label: 'ไม่ทราบหมวด (ลบแล้ว)', kind: 'expense', color: '#94A0AB' }; }
+const defaultMembers = () => [
+  { key: 'shared', label: 'ส่วนรวม / บ้าน', color: '#94A0AB' },
+  { key: 'me', label: 'เรา', color: '#43705F' },
+  { key: 'husband', label: 'สามี', color: '#3B7EA6' },
+  { key: 'daughter', label: 'ลูกสาว', color: '#B8901F' },
+  { key: 'twins', label: 'ลูกชายฝาแฝด (รวมกัน)', color: '#7A5FA6' },
+  { key: 'cat', label: 'แมว', color: '#B14A34' }
+];
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function enableDragReorder(container, itemSelector, handleSelector, onReorder) {
+  const items = () => Array.from(container.querySelectorAll(itemSelector));
+  container.querySelectorAll(handleSelector).forEach(handle => {
+    handle.style.touchAction = 'none';
+    handle.style.cursor = 'grab';
+    handle.addEventListener('pointerdown', (e) => {
+      const dragEl = handle.closest(itemSelector);
+      if (!dragEl) return;
+      e.preventDefault();
+      let startY = e.clientY;
+      dragEl.style.position = 'relative';
+      dragEl.style.zIndex = '10';
+      dragEl.style.background = 'var(--surface-2, var(--card))';
+      dragEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.15)';
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+
+      const onMove = (ev) => {
+        const dy = ev.clientY - startY;
+        dragEl.style.transform = `translateY(${dy}px)`;
+        const all = items();
+        const dragIdx = all.indexOf(dragEl);
+        const dragRect = dragEl.getBoundingClientRect();
+        const dragMid = dragRect.top + dragRect.height / 2;
+        for (const other of all) {
+          if (other === dragEl) continue;
+          const r = other.getBoundingClientRect();
+          const mid = r.top + r.height / 2;
+          const otherIdx = all.indexOf(other);
+          if (otherIdx < dragIdx && dragMid < mid) {
+            container.insertBefore(dragEl, other);
+            startY = ev.clientY;
+            dragEl.style.transform = '';
+            break;
+          } else if (otherIdx > dragIdx && dragMid > mid) {
+            container.insertBefore(dragEl, other.nextSibling);
+            startY = ev.clientY;
+            dragEl.style.transform = '';
+            break;
+          }
+        }
+      };
+      const onUp = (ev) => {
+        try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        dragEl.style.position = '';
+        dragEl.style.zIndex = '';
+        dragEl.style.background = '';
+        dragEl.style.boxShadow = '';
+        dragEl.style.transform = '';
+        const newIds = items().map(el => el.dataset.dragId);
+        onReorder(newIds);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  });
+}
+const defaultCards = () => [
+  { id: genId(), name: 'Nan BAY Lady 2980', owner: 'me', cycleStart: '2026-06-16', closeDate: '2026-07-15', dueDate: '2026-08-04', lastPaidClose: '' },
+  { id: genId(), name: 'Nan BAY 1st Choice 8410', owner: 'me', cycleStart: '2026-06-20', closeDate: '2026-07-19', dueDate: '2026-08-08', lastPaidClose: '' },
+  { id: genId(), name: 'Nan BAY HomePro 4631', owner: 'me', cycleStart: '2026-06-19', closeDate: '2026-07-18', dueDate: '2026-08-07', lastPaidClose: '' },
+  { id: genId(), name: 'Nan BAY T1 5578', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-15', lastPaidClose: '' },
+  { id: genId(), name: 'Nan BAY AIA 1960', owner: 'me', cycleStart: '2026-06-19', closeDate: '2026-07-18', dueDate: '2026-08-02', lastPaidClose: '' },
+  { id: genId(), name: 'Nan UOB Lazada 4920', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Nan KTC JCB 4638', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Nan KTC Union Pay 7888', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Nan KTC Master Card 8020', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Nan KBANK Line Points 4830', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Nan KBANK Shopee 6947', owner: 'me', cycleStart: '2026-06-26', closeDate: '2026-07-25', dueDate: '2026-08-10', lastPaidClose: '' },
+  { id: genId(), name: 'Boss BAY 1st Choice 1576', owner: 'husband', cycleStart: '2026-06-16', closeDate: '2026-07-15', dueDate: '2026-08-04', lastPaidClose: '' },
+  { id: genId(), name: 'Boss BAY JCB 6647', owner: 'husband', cycleStart: '2026-06-11', closeDate: '2026-07-10', dueDate: '2026-07-30', lastPaidClose: '' }
+];
+const defaultFixedExpenses = () => [
+  { id: genId(), name: 'ผ่อนบ้าน', amount: 25800, frequency: 'monthly', category: 'debt', member: 'shared', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'ผ่อนคอนโด', amount: 7100, frequency: 'monthly', category: 'debt', member: 'shared', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'ผ่อนรถ', amount: 17752.93, frequency: 'monthly', category: 'debt', member: 'shared', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'Netflix', amount: 349, frequency: 'monthly', category: 'other', member: 'shared', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'Mobile Nan', amount: 480, frequency: 'monthly', category: 'personal', member: 'me', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'Mobile Boss', amount: 719, frequency: 'monthly', category: 'personal', member: 'husband', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'Youtube', amount: 399, frequency: 'monthly', category: 'other', member: 'shared', dueDate: '2026-07-31', history: [] },
+  { id: genId(), name: 'เงินรายเดือนแม่', amount: 5000, frequency: 'monthly', category: 'other', member: 'me', dueDate: '2026-07-31', history: [] }
+];
+let members = [];
+let memberMap = {};
+function refreshMemberMap() { memberMap = Object.fromEntries(members.map(m => [m.key, m])); }
+const ENTRIES_KEY = 'household-ledger-entries';
+const CATEGORIES_KEY = 'household-ledger-categories';
+const GOALS_KEY = 'household-ledger-goals';
+const CARDS_KEY = 'household-ledger-cards';
+const MEMBERS_KEY = 'household-ledger-members';
+const FIXED_KEY = 'household-ledger-fixed-expenses';
+const WALLET_TX_KEY = 'household-ledger-wallet-transactions';
+const GOAL_TRANSFERS_KEY = 'household-ledger-goal-transfers';
+const WALLETS_KEY = 'household-ledger-wallets';
+const MAINACCOUNTS_KEY = 'household-ledger-mainaccounts';
+const MERCHANT_RULES_KEY = 'household-ledger-merchant-rules';
+const DEFAULT_BULK_WALLET_KEY = 'household-ledger-default-bulk-wallet';
+let defaultBulkWallet = '';
+let merchantRules = [];
+let entries = [], goals = [], cards = [], fixedExpenses = [], walletTransactions = [], goalTransfers = [], wallets = [], mainAccounts = [];
+let currentViewMonth = toISO(new Date()).slice(0, 7);
+let ledgerFilter = 'all';
+let catChart, memberChart;
+let cycleCatChart, cycleMemberChart;
+const memberColors = ['#43705F', '#3B7EA6', '#B8901F', '#7A5FA6', '#B14A34', '#5C9C82', '#5B7A9A', '#94A0AB'];
+
+const catSelect = document.getElementById('f-category');
+const xCategorySelect = document.getElementById('x-category');
+function refreshCategorySelects() {
+  const prevF = catSelect.value, prevX = xCategorySelect.value;
+  catSelect.innerHTML = '';
+  xCategorySelect.innerHTML = '';
+  mrCategorySelect.innerHTML = '';
+  categories.forEach(c => catSelect.appendChild(new Option(c.label, c.key)));
+  categories.filter(c => c.kind === 'expense').forEach(c => { xCategorySelect.appendChild(new Option(c.label, c.key)); mrCategorySelect.appendChild(new Option(c.label, c.key)); });
+  if (categories.some(c => c.key === prevF)) catSelect.value = prevF;
+  if (categories.some(c => c.key === prevX && c.kind === 'expense')) xCategorySelect.value = prevX;
+}
+const mrCategorySelect = document.getElementById('mr-category');
+const fMemberGroup = document.getElementById('f-member-group');
+const goalMemberSelect = document.getElementById('g-member');
+const xMemberSelect = document.getElementById('x-member');
+const cOwnerSelect = document.getElementById('c-owner');
+const wOwnerSelect = document.getElementById('w-owner');
+const maOwnerSelect = document.getElementById('ma-owner');
+const mrMemberSelect = document.getElementById('mr-member');
+function refreshMemberSelects() {
+  const prevChecked = getSelectedMembers();
+  fMemberGroup.innerHTML = '';
+  goalMemberSelect.innerHTML = '';
+  xMemberSelect.innerHTML = '';
+  cOwnerSelect.innerHTML = '';
+  wOwnerSelect.innerHTML = '';
+  maOwnerSelect.innerHTML = '';
+  mrMemberSelect.innerHTML = '';
+  members.forEach(m => {
+    const label = document.createElement('label');
+    label.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:13px;border:1px solid var(--border);border-radius:14px;padding:4px 10px;cursor:pointer;';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = m.key;
+    cb.className = 'f-member-checkbox';
+    cb.checked = prevChecked.length ? prevChecked.includes(m.key) : m.key === 'shared';
+    label.appendChild(cb);
+    label.appendChild(document.createTextNode(m.label));
+    fMemberGroup.appendChild(label);
+    goalMemberSelect.appendChild(new Option(m.label, m.key));
+    xMemberSelect.appendChild(new Option(m.label, m.key));
+    cOwnerSelect.appendChild(new Option(m.label, m.key));
+    wOwnerSelect.appendChild(new Option(m.label, m.key));
+    maOwnerSelect.appendChild(new Option(m.label, m.key));
+    mrMemberSelect.appendChild(new Option(m.label, m.key));
+  });
+}
+function getSelectedMembers() {
+  return Array.from(document.querySelectorAll('.f-member-checkbox:checked')).map(cb => cb.value);
+}
+const fAccountSelect = document.getElementById('f-account');
+const gAccountSelect = document.getElementById('g-account');
+function toggleGoalWithdrawableField() {
+  const hasWallet = !!gAccountSelect.value;
+  document.getElementById('g-withdrawable').style.display = hasWallet ? 'none' : '';
+  document.getElementById('g-withdrawable-note').style.display = hasWallet ? '' : 'none';
+}
+gAccountSelect.addEventListener('change', toggleGoalWithdrawableField);
+function refreshWalletSelects() {
+  const prevF = fAccountSelect.value, prevG = gAccountSelect.value;
+  fAccountSelect.innerHTML = walletOptions();
+  gAccountSelect.innerHTML = walletOptions();
+  if (wallets.some(w => w.id === prevF)) fAccountSelect.value = prevF;
+  if (wallets.some(w => w.id === prevG)) gAccountSelect.value = prevG;
+  toggleGoalWithdrawableField();
+}
+const gMainAccountSelect = document.getElementById('g-mainaccount');
+const wMainAccountSelect = document.getElementById('w-mainaccount');
+function refreshMainAccountSelects() {
+  const prevG = gMainAccountSelect.value, prevW = wMainAccountSelect.value;
+  gMainAccountSelect.innerHTML = mainAccountOptions();
+  wMainAccountSelect.innerHTML = mainAccountOptions();
+  if (mainAccounts.some(a => a.id === prevG)) gMainAccountSelect.value = prevG;
+  if (mainAccounts.some(a => a.id === prevW)) wMainAccountSelect.value = prevW;
+}
+document.getElementById('f-date').value = toISO(new Date());
+
+function fmt(n) { return '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function fmtDateStr(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function fmtDate(d) { return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }); }
+function memberLabel(key) { return memberMap[key] ? memberMap[key].label : 'ไม่ระบุ'; }
+function paymentLabel(p) { if (!p || p === 'cash') return 'เงินสด/โอน'; const c = cards.find(c => c.id === p); return c ? c.name : 'เงินสด/โอน'; }
+function cashFlowForMonth(ym) {
+  let income = 0, expense = 0;
+  entries.forEach(e => {
+    if (e.date.slice(0, 7) !== ym) return;
+    const kind = getCat(e.category).kind;
+    if (kind === 'income') { income += e.amount; return; }
+    const isCardPayment = e.payment && e.payment !== 'cash' && cards.some(c => c.id === e.payment);
+    if (!isCardPayment) expense += e.amount;
+  });
+  walletTransactions.forEach(t => {
+    if (t.date.slice(0, 7) !== ym) return;
+    if (t.amount < 0 && t.note && t.note.indexOf('ชำระบัตร') === 0) expense += Math.abs(t.amount);
+  });
+  return { income, expense, balance: income - expense };
+}
+function monthLabel(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+}
+function shiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function goalSaved(g) {
+  const kind = g.kind === 'debt' ? 'debt' : 'saving';
+  const contributed = entries.filter(e => e.category === kind && e.goal === g.id && (!g.lastResetDate || e.date > g.lastResetDate)).reduce((s, e) => s + e.amount, 0);
+  const transferredOut = goalTransfers.filter(t => t.fromGoalId === g.id && (!g.lastResetDate || t.date > g.lastResetDate)).reduce((s, t) => s + t.amount, 0);
+  return (g.initial || 0) + contributed - transferredOut;
+}
+function walletOptions(selectedId) {
+  return '<option value="">ไม่ระบุกระเป๋า</option>' + wallets.map(w => `<option value="${w.id}" ${w.id === selectedId ? 'selected' : ''}>${w.name}</option>`).join('');
+}
+function walletLabel(id) { const w = wallets.find(x => x.id === id); return w ? w.name : ''; }
+function effectiveWithdrawable(g) {
+  if (g.account) {
+    const w = wallets.find(x => x.id === g.account);
+    if (w && w.locked) return w.locked === 'yes' ? 'no' : 'yes';
+  }
+  return g.withdrawable || '';
+}
+function mainAccountOptions(selectedId) {
+  return '<option value="">ไม่ระบุบัญชี</option>' + mainAccounts.map(a => `<option value="${a.id}" ${a.id === selectedId ? 'selected' : ''}>${a.name}</option>`).join('');
+}
+function mainAccountLabel(id) { const a = mainAccounts.find(x => x.id === id); return a ? a.name : ''; }
+
+function renderMembersManager() {
+  const wrap = document.getElementById('members-manager');
+  wrap.innerHTML = '';
+  members.forEach(m => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    row.innerHTML = `<span class="dot" style="background:${m.color};"></span>
+      <input type="text" value="${m.label}" data-key="${m.key}" class="member-name-input" style="flex:1;">
+      <button class="del-btn" data-del-member="${m.key}" aria-label="ลบสมาชิก">✕</button>`;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('.member-name-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const m = members.find(x => x.key === inp.dataset.key);
+      if (m && inp.value.trim()) { m.label = inp.value.trim(); await saveMembers(); refreshMemberSelects(); render(); }
+    });
+  });
+  wrap.querySelectorAll('[data-del-member]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (members.length <= 1) return;
+      members = members.filter(m => m.key !== btn.dataset.delMember);
+      refreshMemberMap();
+      await saveMembers(); refreshMemberSelects(); render();
+    });
+  });
+}
+
+function renderCategoryManager() {
+  const wrap = document.getElementById('category-manager');
+  wrap.innerHTML = '';
+  categories.forEach(c => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;';
+    row.innerHTML = `<span class="dot" style="background:${c.color};"></span>
+      <input type="text" value="${c.label}" data-key="${c.key}" class="cat-name-input" style="flex:1;">
+      <span class="muted" style="white-space:nowrap;">${c.kind === 'income' ? 'รายรับ' : 'รายจ่าย'}</span>
+      <button class="del-btn" data-del-cat="${c.key}" aria-label="ลบหมวดหมู่">✕</button>`;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('.cat-name-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const c = categories.find(x => x.key === inp.dataset.key);
+      if (c && inp.value.trim()) { c.label = inp.value.trim(); await saveCategories(); refreshCategorySelects(); render(); }
+    });
+  });
+  wrap.querySelectorAll('[data-del-cat]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (categories.length <= 1) return;
+      categories = categories.filter(c => c.key !== btn.dataset.delCat);
+      refreshCatMap();
+      await saveCategories(); refreshCategorySelects(); render();
+    });
+  });
+}
+
+function refreshGoalSelect() {
+  const sel = document.getElementById('f-goal');
+  const kind = catSelect.value === 'debt' ? 'debt' : 'saving';
+  const defaultLabel = kind === 'debt' ? 'หนี้ทั่วไป (ไม่ระบุ)' : 'เงินออมทั่วไป (ไม่ระบุเป้าหมาย)';
+  sel.innerHTML = `<option value="">${defaultLabel}</option>`;
+  goals.filter(g => (g.kind || 'saving') === kind).forEach(g => { const o = document.createElement('option'); o.value = g.id; o.textContent = g.name; sel.appendChild(o); });
+}
+function refreshPaymentSelect() {
+  const sel = document.getElementById('f-payment');
+  sel.innerHTML = '<option value="cash">จ่ายด้วยเงินสด/โอน</option>';
+  cards.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = 'จ่ายด้วยบัตร ' + c.name; sel.appendChild(o); });
+}
+function renderMonthlyHistory() {
+  const wrap = document.getElementById('monthly-history');
+  wrap.innerHTML = '';
+  const months = new Set();
+  entries.forEach(e => months.add(e.date.slice(0, 7)));
+  walletTransactions.forEach(t => months.add(t.date.slice(0, 7)));
+  months.add(currentViewMonth);
+  const sorted = [...months].sort().reverse();
+  if (sorted.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูล</p>'; return; }
+  sorted.forEach(ym => {
+    const flow = cashFlowForMonth(ym);
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    const isActive = ym === currentViewMonth;
+    div.style.borderColor = isActive ? 'var(--ink)' : '';
+    div.innerHTML = `<div class="row-between"><span style="font-weight:${isActive ? '600' : '400'};">${monthLabel(ym)}${isActive ? ' <span class="muted">(กำลังดูอยู่)</span>' : ''}</span><span></span></div>
+      <p class="muted" style="margin:6px 0;">รายรับ <span style="color:var(--sage);">${fmt(flow.income)}</span> · รายจ่าย <span style="color:var(--rust);">${fmt(flow.expense)}</span> · คงเหลือ <span style="color:${flow.balance < 0 ? 'var(--rust)' : 'var(--text-primary)'};font-weight:600;">${fmt(flow.balance)}</span></p>
+      ${isActive ? '' : `<div style="text-align:right;"><button class="btn" data-view-month="${ym}">ดูเดือนนี้</button></div>`}`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('[data-view-month]').forEach(btn => btn.addEventListener('click', () => {
+    currentViewMonth = btn.dataset.viewMonth;
+    render();
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }));
+}
+
+function refreshBillImportSelects() {
+  const cardSel = document.getElementById('bi-card');
+  const walletSel = document.getElementById('bi-wallet');
+  cardSel.innerHTML = cards.map(c => `<option value="${c.id}">${c.name}</option>`).join('') || '<option value="">ยังไม่มีบัตร</option>';
+  walletSel.innerHTML = walletOptions();
+  const exCardSel = document.getElementById('ex-card');
+  const prevEx = exCardSel.value;
+  exCardSel.innerHTML = '<option value="">ทั้งหมด (เงินสด/โอน + ทุกบัตร)</option><option value="cash">เฉพาะเงินสด/โอน</option>'
+    + cards.map(c => `<option value="${c.id}">เฉพาะบัตร ${c.name}</option>`).join('');
+  if ([...exCardSel.options].some(o => o.value === prevEx)) exCardSel.value = prevEx;
+  const defaultWalletSel = document.getElementById('default-bulk-wallet');
+  defaultWalletSel.innerHTML = walletOptions();
+  if (wallets.some(w => w.id === defaultBulkWallet)) defaultWalletSel.value = defaultBulkWallet;
+}
+catSelect.addEventListener('change', () => {
+  const show = catSelect.value === 'saving' || catSelect.value === 'debt';
+  document.getElementById('f-goal-wrap').style.display = show ? 'block' : 'none';
+  if (show) refreshGoalSelect();
+});
+
+function renderUpcoming() {
+  const wrap = document.getElementById('upcoming');
+  const today = new Date();
+  const todayISO = toISO(today);
+  const items = [];
+  cards.forEach(c => {
+    if (c.lastPaidClose === c.closeDate) return;
+    const total = entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate).reduce((s, e) => s + e.amount, 0);
+    items.push({ name: 'บัตร ' + c.name, dueISO: c.dueDate, amount: total, color: '#3B7EA6' });
+  });
+  goals.forEach(g => {
+    if (!g.dueDate) return;
+    const gKind = g.kind === 'debt' ? 'debt' : 'saving';
+    const saved = goalSaved(g);
+    items.push({ name: g.name, dueISO: g.dueDate, amount: saved, color: gKind === 'debt' ? '#B14A34' : '#5C9C82' });
+  });
+  items.sort((a, b) => a.dueISO.localeCompare(b.dueISO));
+  wrap.innerHTML = '';
+  if (items.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกำหนดชำระที่ต้องติดตาม</p>'; return; }
+  items.forEach(it => {
+    const overdue = it.dueISO < todayISO;
+    const row = document.createElement('div');
+    row.className = 'upcoming-item';
+    row.innerHTML = `<span class="dot" style="background:${it.color}"></span>
+      <span class="name">${it.name}</span>
+      <span class="date" style="color:${overdue ? 'var(--rust)' : 'var(--text-secondary)'}">${fmtDateStr(it.dueISO)}${overdue ? ' (เลยกำหนด)' : ''}</span>
+      <span class="amt">${fmt(it.amount)}</span>`;
+    wrap.appendChild(row);
+  });
+}
+
+let editingCardId = null;
+let payingCardId = null;
+let expandedCardBreakdown = new Set();
+let allCardsBreakdownExpanded = false;
+
+function cardTotal(c) {
+  return entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate).reduce((s, e) => s + e.amount, 0);
+}
+
+function renderCardsSummary() {
+  const wrap = document.getElementById('cards-summary');
+  wrap.innerHTML = '';
+  if (cards.length === 0) return;
+  const grandTotal = cards.reduce((s, c) => s + cardTotal(c), 0);
+  const byOwner = {};
+  cards.forEach(c => {
+    const label = memberLabel(c.owner);
+    byOwner[label] = (byOwner[label] || 0) + cardTotal(c);
+  });
+  const ownerParts = Object.keys(byOwner).filter(k => byOwner[k] > 0).map(k => k + ' ' + fmt(byOwner[k])).join(' · ');
+  const div = document.createElement('div');
+  div.className = 'goal-card';
+  div.style.background = 'var(--paper)';
+  div.innerHTML = `<div class="row-between"><span style="font-weight:600;">ยอดรวมทุกใบ (${cards.length} ใบ)</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>
+    ${ownerParts ? `<p class="muted" style="margin:6px 0 0;">${ownerParts}</p>` : ''}
+    ${grandTotal > 0 ? `<button class="btn" id="cards-all-breakdown-toggle" style="margin-top:8px;font-size:12px;padding:4px 10px;">${allCardsBreakdownExpanded ? 'ซ่อนรายละเอียดรวมทุกใบ ▲' : 'ดูรายละเอียดรวมทุกใบ ▼'}</button>` : ''}
+    ${allCardsBreakdownExpanded ? `
+      <div style="margin-top:10px;">
+        <p class="secondary-text" style="margin:6px 0 4px;">ตามเดือนที่ซื้อ (ค้างจ่าย)</p>
+        <div id="cards-all-month-legend"></div>
+        <p class="secondary-text" style="margin:10px 0 4px;">ตามหมวดหมู่ (รวมทุกใบ)</p>
+        <div id="cards-all-cat-legend"></div>
+        <p class="secondary-text" style="margin:10px 0 4px;">ตามคน (รวมทุกใบ)</p>
+        <div id="cards-all-member-legend"></div>
+      </div>` : ''}`;
+  wrap.appendChild(div);
+  document.getElementById('cards-all-breakdown-toggle')?.addEventListener('click', () => {
+    allCardsBreakdownExpanded = !allCardsBreakdownExpanded;
+    renderCardsSummary();
+  });
+  if (allCardsBreakdownExpanded) {
+    const goalTypeMeta = {
+      saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+      periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+      debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+    };
+    const catTotals = {}, memberTotals = {}, catMeta = {}, monthTotals = {};
+    const monthColors = ['#43705F', '#3B7EA6', '#B8901F', '#7A5FA6', '#B14A34', '#5C9C82', '#5B7A9A', '#94A0AB'];
+    cards.forEach(c => {
+      entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate).forEach(e => {
+        let key;
+        if (e.goal) {
+          const g = goals.find(gg => gg.id === e.goal);
+          const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+          key = 'goal_' + gk;
+          catMeta[key] = goalTypeMeta[gk];
+        } else {
+          key = e.category;
+          const cat = getCat(e.category);
+          catMeta[key] = { label: cat.label, color: cat.color };
+        }
+        catTotals[key] = (catTotals[key] || 0) + e.amount;
+        const mk = e.member || 'shared';
+        memberTotals[mk] = (memberTotals[mk] || 0) + e.amount;
+        const ym = e.date.slice(0, 7);
+        monthTotals[ym] = (monthTotals[ym] || 0) + e.amount;
+      });
+    });
+    const catList = Object.keys(catTotals).map(k => ({ key: k, label: catMeta[k].label, color: catMeta[k].color }));
+    const memberList = members.filter(m => memberTotals[m.key]).map(m => ({ key: m.key, label: m.label, color: m.color }));
+    const monthKeys = Object.keys(monthTotals).sort().reverse();
+    const monthList = monthKeys.map((ym, i) => ({ key: ym, label: monthLabel(ym), color: monthColors[i % monthColors.length] }));
+    renderChartLegend('cards-all-month-legend', monthList, monthTotals, item => item.key);
+    renderChartLegend('cards-all-cat-legend', catList, catTotals, item => item.key);
+    renderChartLegend('cards-all-member-legend', memberList, memberTotals, item => item.key);
+  }
+}
+
+function renderCards() {
+  const wrap = document.getElementById('cards');
+  wrap.innerHTML = '';
+  if (cards.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีบัตร เพิ่มบัตรด้านล่างเพื่อติดตามยอดตามรอบบิล</p>'; return; }
+  const todayISO = toISO(new Date());
+  const sortedCards = [...cards].sort((a, b) => {
+    const totalA = cardTotal(a), totalB = cardTotal(b);
+    const hasA = totalA > 0, hasB = totalB > 0;
+    if (hasA !== hasB) return hasA ? -1 : 1;
+    const ownerA = memberLabel(a.owner), ownerB = memberLabel(b.owner);
+    const ownerCmp = ownerA.localeCompare(ownerB, 'th');
+    if (ownerCmp !== 0) return ownerCmp;
+    return totalB - totalA;
+  });
+  sortedCards.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'card-card';
+
+    if (editingCardId === c.id) {
+      const ownerOptions = members.map(m => `<option value="${m.key}" ${m.key === c.owner ? 'selected' : ''}>${m.label}</option>`).join('');
+      div.innerHTML = `
+        <div class="form-grid g2">
+          <input type="text" class="ce-name" value="${c.name}" placeholder="ชื่อบัตร">
+          <select class="ce-owner">${ownerOptions}</select>
+        </div>
+        <div class="form-grid g3">
+          <div>
+            <p class="muted" style="margin:0 0 4px;">วันที่เริ่มนับยอด</p>
+            <input type="date" class="ce-cyclestart" value="${c.cycleStart}">
+          </div>
+          <div>
+            <p class="muted" style="margin:0 0 4px;">วันที่ปิดนับยอด</p>
+            <input type="date" class="ce-closedate" value="${c.closeDate}">
+          </div>
+          <div>
+            <p class="muted" style="margin:0 0 4px;">วันที่กำหนดจ่ายเงิน</p>
+            <input type="date" class="ce-duedate" value="${c.dueDate}">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-c-cancel="${c.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-c-save="${c.id}">บันทึก</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    const total = entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate).reduce((s, e) => s + e.amount, 0);
+    const overdue = c.dueDate < todayISO;
+    const paid = c.lastPaidClose === c.closeDate;
+
+    if (payingCardId === c.id) {
+      div.innerHTML = `<div class="row-between"><span>${c.name}</span><span style="font-weight:600;">${fmt(total)}</span></div>
+        <p class="muted" style="margin:4px 0 8px;">จ่ายบิลนี้จากกระเป๋าเงินไหน (ไม่บังคับ) จ่ายวันไหนจริง และจ่ายเท่าไหร่ (แก้ได้ถ้าจ่ายขั้นต่ำ)</p>
+        <div class="form-grid g2">
+          <select class="pay-account">${walletOptions(defaultBulkWallet)}</select>
+          <input type="date" class="pay-date" value="${toISO(new Date())}">
+        </div>
+        <input type="number" class="pay-amount" value="${total.toFixed(2)}" min="0" step="0.01" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+          <button class="btn" data-pay-cancel="${c.id}">ยกเลิก</button>
+          <button class="btn" data-pay-skip="${c.id}">ข้าม ไม่ระบุกระเป๋า</button>
+          <button class="btn btn-primary" data-pay-confirm="${c.id}">ยืนยันชำระ</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    div.innerHTML = `<div class="row-between"><span>${c.name} <span class="muted">· ${memberLabel(c.owner)}</span></span><span style="font-weight:600;">${fmt(total)}</span></div>
+      <p class="secondary-text" style="margin:4px 0 8px;color:${!paid && overdue ? 'var(--rust)' : 'var(--text-secondary)'};">เริ่มนับ ${fmtDateStr(c.cycleStart)} · ปิดนับ ${fmtDateStr(c.closeDate)} · ครบกำหนด ${fmtDateStr(c.dueDate)}${!paid && overdue ? ' (เลยกำหนด)' : ''}</p>
+      ${total > 0 ? `<button class="btn" data-c-breakdown-toggle="${c.id}" style="margin-bottom:8px;font-size:12px;padding:4px 10px;">${expandedCardBreakdown.has(c.id) ? 'ซ่อนรายละเอียดรอบบิล ▲' : 'ดูรายละเอียดรอบบิล ▼'}</button>` : ''}
+      ${expandedCardBreakdown.has(c.id) ? `
+        <div style="margin-bottom:10px;">
+          <p class="secondary-text" style="margin:6px 0 4px;">ตามหมวดหมู่</p>
+          <div id="card-cat-legend-${c.id}"></div>
+          <p class="secondary-text" style="margin:10px 0 4px;">ตามคน</p>
+          <div id="card-member-legend-${c.id}"></div>
+        </div>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn" data-c-edit="${c.id}">แก้ไข</button>
+        <button class="btn" data-c-del="${c.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
+        <button class="btn" data-card="${c.id}" style="${paid ? 'color:var(--sage);border-color:var(--sage);' : ''}">${paid ? '✓ ชำระรอบนี้แล้ว' : 'ทำเครื่องหมายว่าชำระแล้ว'}</button>
+      </div>`;
+    wrap.appendChild(div);
+    if (expandedCardBreakdown.has(c.id)) {
+      const goalTypeMeta = {
+        saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+        periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+        debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+      };
+      const catTotals = {}, memberTotals = {}, catMeta = {};
+      entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate).forEach(e => {
+        let key;
+        if (e.goal) {
+          const g = goals.find(gg => gg.id === e.goal);
+          const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+          key = 'goal_' + gk;
+          catMeta[key] = goalTypeMeta[gk];
+        } else {
+          key = e.category;
+          const cat = getCat(e.category);
+          catMeta[key] = { label: cat.label, color: cat.color };
+        }
+        catTotals[key] = (catTotals[key] || 0) + e.amount;
+        const mk = e.member || 'shared';
+        memberTotals[mk] = (memberTotals[mk] || 0) + e.amount;
+      });
+      const catList = Object.keys(catTotals).map(k => ({ key: k, label: catMeta[k].label, color: catMeta[k].color }));
+      const memberList = members.filter(m => memberTotals[m.key]).map(m => ({ key: m.key, label: m.label, color: m.color }));
+      renderChartLegend('card-cat-legend-' + c.id, catList, catTotals, item => item.key);
+      renderChartLegend('card-member-legend-' + c.id, memberList, memberTotals, item => item.key);
+    }
+  });
+  wrap.querySelectorAll('button[data-c-breakdown-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    const id = btn.dataset.cBreakdownToggle;
+    if (expandedCardBreakdown.has(id)) expandedCardBreakdown.delete(id); else expandedCardBreakdown.add(id);
+    renderCards();
+  }));
+  wrap.querySelectorAll('button[data-c-edit]').forEach(btn => btn.addEventListener('click', () => {
+    editingCardId = btn.dataset.cEdit; renderCards();
+  }));
+  wrap.querySelectorAll('button[data-c-del]').forEach(btn => btn.addEventListener('click', async () => {
+    cards = cards.filter(c => c.id !== btn.dataset.cDel);
+    await saveCards(); refreshPaymentSelect(); render();
+  }));
+  wrap.querySelectorAll('button[data-c-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    editingCardId = null; renderCards();
+  }));
+  wrap.querySelectorAll('button[data-c-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = cards.find(c => c.id === btn.dataset.cSave);
+    const div = btn.closest('.card-card');
+    const name = div.querySelector('.ce-name').value.trim();
+    const cycleStart = div.querySelector('.ce-cyclestart').value;
+    const closeDate = div.querySelector('.ce-closedate').value;
+    const dueDate = div.querySelector('.ce-duedate').value;
+    if (!name || !cycleStart || !closeDate || !dueDate) return;
+    card.name = name;
+    card.owner = div.querySelector('.ce-owner').value;
+    card.cycleStart = cycleStart;
+    card.closeDate = closeDate;
+    card.dueDate = dueDate;
+    editingCardId = null;
+    await saveCards(); render();
+  }));
+  function advanceCardCycle(card) {
+    const newStart = new Date(card.closeDate + 'T00:00:00'); newStart.setDate(newStart.getDate() + 1);
+    const newClose = new Date(card.closeDate + 'T00:00:00'); newClose.setMonth(newClose.getMonth() + 1);
+    const newDue = new Date(card.dueDate + 'T00:00:00'); newDue.setMonth(newDue.getMonth() + 1);
+    card.cycleStart = toISO(newStart);
+    card.closeDate = toISO(newClose);
+    card.dueDate = toISO(newDue);
+    card.lastPaidClose = '';
+  }
+  wrap.querySelectorAll('button[data-card]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = cards.find(c => c.id === btn.dataset.card);
+    if (card.lastPaidClose === card.closeDate) {
+      card.lastPaidClose = '';
+      await saveCards(); render();
+    } else {
+      payingCardId = card.id; renderCards();
+    }
+  }));
+  wrap.querySelectorAll('button[data-pay-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    payingCardId = null; renderCards();
+  }));
+  wrap.querySelectorAll('button[data-pay-skip]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = cards.find(c => c.id === btn.dataset.paySkip);
+    card.lastPaidClose = card.closeDate;
+    advanceCardCycle(card);
+    payingCardId = null;
+    await saveCards(); render();
+  }));
+  wrap.querySelectorAll('button[data-pay-confirm]').forEach(btn => btn.addEventListener('click', async () => {
+    const card = cards.find(c => c.id === btn.dataset.payConfirm);
+    const div = btn.closest('.card-card');
+    const account = div.querySelector('.pay-account').value.trim();
+    const payDate = div.querySelector('.pay-date').value || toISO(new Date());
+    const payAmount = parseFloat(div.querySelector('.pay-amount').value) || 0;
+    if (account && payAmount > 0) {
+      walletTransactions.push({
+        id: genId(), date: payDate, account,
+        amount: -payAmount, note: 'ชำระบัตร ' + card.name,
+        cycleFrom: card.cycleStart, cycleTo: card.closeDate
+      });
+      await saveWalletTransactions(); refreshAccountList();
+    }
+    card.lastPaidClose = card.closeDate;
+    advanceCardCycle(card);
+    payingCardId = null;
+    await saveCards(); render();
+  }));
+}
+
+function walletBalanceDetail(w) {
+  let total = w.initial || 0;
+  const items = [];
+  if (w.initial) items.push({ name: 'ยอดเริ่มต้น', amount: w.initial });
+  entries.forEach(e => {
+    if (e.account !== w.id) return;
+    if (e.goal && (e.category === 'saving' || e.category === 'debt')) return;
+    const amt = getCat(e.category).kind === 'income' ? e.amount : -e.amount;
+    total += amt;
+    items.push({ name: (e.note || getCat(e.category).label) + ' (' + e.date + ')', amount: amt, txId: null });
+  });
+  goals.forEach(g => {
+    if (g.account !== w.id) return;
+    const saved = goalSaved(g);
+    total += saved;
+    items.push({ name: g.name + ' (เป้าหมาย)', amount: saved, txId: null });
+  });
+  walletTransactions.forEach(t => {
+    if (t.account !== w.id) return;
+    total += t.amount;
+    items.push({ name: (t.note || 'รายการกระเป๋า') + ' (' + t.date + ')', amount: t.amount, txId: t.id });
+  });
+  return { total, items };
+}
+function walletBalance(w) { return walletBalanceDetail(w).total; }
+
+let editingWalletId = null;
+let expandedWalletDetails = new Set();
+
+function renderWalletsManager() {
+  const wrap = document.getElementById('wallets-manager');
+  wrap.innerHTML = '';
+  if (wallets.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกระเป๋าเงิน เพิ่มกระเป๋าแรกด้านล่าง</p>'; }
+  wallets.forEach((w, wIdx) => {
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.dataset.dragId = w.id;
+
+    if (editingWalletId === w.id) {
+      const ownerOptions = members.map(m => `<option value="${m.key}" ${m.key === w.owner ? 'selected' : ''}>${m.label}</option>`).join('');
+      div.innerHTML = `
+        <div class="form-grid g2">
+          <input type="text" class="we-name" value="${w.name}" placeholder="ชื่อกระเป๋า">
+          <input type="number" class="we-initial" value="${w.initial || 0}" placeholder="ยอดเริ่มต้น" min="0" step="0.01">
+        </div>
+        <div class="form-grid g2">
+          <select class="we-owner">${ownerOptions}</select>
+          <select class="we-type">
+            <option value="spending" ${w.type === 'spending' ? 'selected' : ''}>กระเป๋าใช้จ่าย</option>
+            <option value="saving" ${w.type === 'saving' ? 'selected' : ''}>กระเป๋าออม/สำรอง</option>
+          </select>
+        </div>
+        <div class="form-grid g2">
+          <select class="we-mainaccount">${mainAccountOptions(w.mainAccount)}</select>
+          <select class="we-locked">
+            <option value="" ${!w.locked ? 'selected' : ''}>สถานะการดึงมาใช้ (ไม่ระบุ)</option>
+            <option value="no" ${w.locked === 'no' ? 'selected' : ''}>ดึงมาใช้ได้ในกรณีจำเป็น</option>
+            <option value="yes" ${w.locked === 'yes' ? 'selected' : ''}>ล็อกไว้ (ห้ามดึงมาใช้)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-w-cancel="${w.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-w-save="${w.id}">บันทึก</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    const { total: balance, items: balanceItems } = walletBalanceDetail(w);
+    const lockTag = w.locked === 'yes'
+      ? '<p style="margin:6px 0 0;"><span class="muted" style="color:var(--rust);">ล็อกไว้ (ห้ามดึงมาใช้)</span></p>'
+      : w.locked === 'no'
+      ? '<p style="margin:6px 0 0;"><span class="muted" style="color:var(--sage);">ดึงมาใช้ได้ในกรณีจำเป็น</span></p>'
+      : '';
+    const isExpanded = expandedWalletDetails.has(w.id);
+    div.innerHTML = `<div class="row-between"><span>${w.name} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
+      ${lockTag}
+      ${balanceItems.length ? `<button class="btn" data-w-toggle-detail="${w.id}" style="margin-top:6px;font-size:12px;padding:4px 10px;">${isExpanded ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + balanceItems.length + ' รายการ) ▼'}</button>` : ''}
+      ${isExpanded ? `<div style="margin:6px 0 0;">${balanceItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('')}</div>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
+        <button class="btn" data-w-move-up="${w.id}" ${wIdx === 0 ? 'disabled style="opacity:0.4;"' : ''}>▲</button>
+        <button class="btn" data-w-move-down="${w.id}" ${wIdx === wallets.length - 1 ? 'disabled style="opacity:0.4;"' : ''}>▼</button>
+        <button class="btn" data-w-edit="${w.id}">แก้ไข</button>
+        <button class="btn" data-w-del="${w.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('button[data-w-move-up]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = wallets.findIndex(w => w.id === btn.dataset.wMoveUp);
+    if (idx > 0) { [wallets[idx - 1], wallets[idx]] = [wallets[idx], wallets[idx - 1]]; await saveWallets(); render(); }
+  }));
+  wrap.querySelectorAll('button[data-w-move-down]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = wallets.findIndex(w => w.id === btn.dataset.wMoveDown);
+    if (idx < wallets.length - 1) { [wallets[idx + 1], wallets[idx]] = [wallets[idx], wallets[idx + 1]]; await saveWallets(); render(); }
+  }));
+  enableDragReorder(wrap, '[data-drag-id]', '[data-drag-handle]', async (newIds) => {
+    const map = new Map(wallets.map(w => [w.id, w]));
+    const uniqueIds = [...new Set(newIds)];
+    const reordered = uniqueIds.map(id => map.get(id)).filter(Boolean);
+    wallets.forEach(w => { if (!uniqueIds.includes(w.id)) reordered.push(w); });
+    wallets = reordered;
+    await saveWallets(); render();
+  });
+  wrap.querySelectorAll('[data-w-toggle-detail]').forEach(btn => btn.addEventListener('click', () => {
+    const id = btn.dataset.wToggleDetail;
+    if (expandedWalletDetails.has(id)) expandedWalletDetails.delete(id); else expandedWalletDetails.add(id);
+    renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-del-wallet-tx]').forEach(btn => btn.addEventListener('click', async () => {
+    walletTransactions = walletTransactions.filter(t => t.id !== btn.dataset.delWalletTx);
+    await saveWalletTransactions();
+    render();
+  }));
+  wrap.querySelectorAll('[data-w-edit]').forEach(btn => btn.addEventListener('click', () => {
+    editingWalletId = btn.dataset.wEdit; renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-w-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    editingWalletId = null; renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-w-del]').forEach(btn => btn.addEventListener('click', async () => {
+    const delId = btn.dataset.wDel;
+    wallets = wallets.filter(w => w.id !== delId);
+    entries.forEach(e => { if (e.account === delId) e.account = ''; });
+    goals.forEach(g => { if (g.account === delId) g.account = ''; });
+    walletTransactions.forEach(t => { if (t.account === delId) t.account = ''; });
+    await saveWallets(); await saveEntries(); await saveGoals(); await saveWalletTransactions();
+    refreshWalletSelects(); render();
+  }));
+  wrap.querySelectorAll('[data-w-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const w = wallets.find(x => x.id === btn.dataset.wSave);
+    const div = btn.closest('.goal-card');
+    const name = div.querySelector('.we-name').value.trim();
+    if (!name) return;
+    w.name = name;
+    w.initial = parseFloat(div.querySelector('.we-initial').value) || 0;
+    w.owner = div.querySelector('.we-owner').value;
+    w.type = div.querySelector('.we-type').value;
+    w.mainAccount = div.querySelector('.we-mainaccount').value.trim();
+    w.locked = div.querySelector('.we-locked').value;
+    editingWalletId = null;
+    await saveWallets(); refreshWalletSelects(); refreshAccountList(); render();
+  }));
+}
+
+function mainAccountBalance(a) {
+  let total = 0;
+  const items = [];
+  const byStatus = { no: 0, yes: 0, '': 0 };
+  wallets.forEach(w => {
+    if (w.mainAccount === a.id) {
+      const bal = walletBalance(w);
+      total += bal;
+      items.push({ name: w.name, amount: bal });
+      const st = w.locked === 'yes' ? 'yes' : w.locked === 'no' ? 'no' : '';
+      byStatus[st] += bal;
+    }
+  });
+  goals.forEach(g => {
+    if (g.mainAccount === a.id && !g.account) {
+      const saved = goalSaved(g);
+      total += saved;
+      items.push({ name: g.name, amount: saved });
+      const ew = effectiveWithdrawable(g);
+      const st = ew === 'yes' ? 'no' : ew === 'no' ? 'yes' : '';
+      byStatus[st] += saved;
+    }
+  });
+  return { total, items, byStatus };
+}
+
+function renderWalletStatusSummary() {
+  const wrap = document.getElementById('wallet-status-summary');
+  wrap.innerHTML = '';
+  if (wallets.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกระเป๋าเงิน เพิ่มกระเป๋าก่อนเพื่อดูสรุปที่นี่</p>'; return; }
+  const statusLabels = { no: 'ดึงมาใช้ได้ในกรณีจำเป็น', yes: 'ล็อกไว้ (ห้ามดึงมาใช้)', '': 'ไม่ได้ระบุ' };
+  const statusColors = { no: 'var(--sage)', yes: 'var(--rust)', '': 'var(--text-muted)' };
+  const grouped = { no: { total: 0, items: [] }, yes: { total: 0, items: [] }, '': { total: 0, items: [] } };
+  let grandTotal = 0;
+  wallets.forEach(w => {
+    const bal = walletBalance(w);
+    const key = w.locked === 'yes' ? 'yes' : w.locked === 'no' ? 'no' : '';
+    grouped[key].total += bal;
+    grouped[key].items.push({ name: w.name, amount: bal });
+    grandTotal += bal;
+  });
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทั้งหมด</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>`;
+  wrap.appendChild(totalDiv);
+  ['no', 'yes', ''].forEach(key => {
+    if (grouped[key].items.length === 0) return;
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="color:${statusColors[key]};">${statusLabels[key]}</span><span style="font-weight:600;">${fmt(grouped[key].total)}</span></div>
+      <p class="muted" style="margin:4px 0 0;">${grouped[key].items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>`;
+    wrap.appendChild(div);
+  });
+}
+
+function normalizeMerchantText(s) { return (s || '').toUpperCase().replace(/[^A-Z0-9ก-๙]/g, ''); }
+function matchMerchantRule(description) {
+  const norm = normalizeMerchantText(description);
+  return merchantRules.find(r => norm.includes(normalizeMerchantText(r.keyword)));
+}
+
+function renderMerchantRulesManager() {
+  const wrap = document.getElementById('merchant-rules-manager');
+  wrap.innerHTML = '';
+  if (merchantRules.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกฎ เพิ่มกฎแรกด้านล่าง</p>'; return; }
+  merchantRules.forEach(r => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;';
+    const catOptions = categories.filter(c => c.kind === 'expense').map(c => `<option value="${c.key}" ${c.key === r.category ? 'selected' : ''}>${c.label}</option>`).join('');
+    const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === r.member ? 'selected' : ''}>${m.label}</option>`).join('');
+    row.innerHTML = `<input type="text" value="${r.keyword}" data-key="${r.id}" class="mr-keyword-input" style="flex:1;min-width:100px;">
+      <select class="mr-category-input" data-key="${r.id}">${catOptions}</select>
+      <select class="mr-member-input" data-key="${r.id}">${memberOptions}</select>
+      <button class="del-btn" data-del-mr="${r.id}" aria-label="ลบกฎ">✕</button>`;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll('.mr-keyword-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const r = merchantRules.find(x => x.id === inp.dataset.key);
+      if (r && inp.value.trim()) { r.keyword = inp.value.trim(); await saveMerchantRules(); }
+    });
+  });
+  wrap.querySelectorAll('.mr-category-input').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const r = merchantRules.find(x => x.id === sel.dataset.key);
+      if (r) { r.category = sel.value; await saveMerchantRules(); }
+    });
+  });
+  wrap.querySelectorAll('.mr-member-input').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const r = merchantRules.find(x => x.id === sel.dataset.key);
+      if (r) { r.member = sel.value; await saveMerchantRules(); }
+    });
+  });
+  wrap.querySelectorAll('[data-del-mr]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      merchantRules = merchantRules.filter(r => r.id !== btn.dataset.delMr);
+      await saveMerchantRules(); render();
+    });
+  });
+}
+
+function renderMainAccountsManager() {
+  const wrap = document.getElementById('mainaccounts-manager');
+  wrap.innerHTML = '';
+  if (mainAccounts.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีบัญชี เพิ่มบัญชีแรกด้านล่าง</p>'; return; }
+  const grandTotal = mainAccounts.reduce((s, a) => s + mainAccountBalance(a).total, 0);
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทั้งหมดทุกบัญชี</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>`;
+  wrap.appendChild(totalDiv);
+  mainAccounts.forEach((a, aIdx) => {
+    const { total, items, byStatus } = mainAccountBalance(a);
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.dataset.dragId = a.id;
+    const ownerOptions = members.map(m => `<option value="${m.key}" ${m.key === a.owner ? 'selected' : ''}>${m.label}</option>`).join('');
+    const statusParts = [];
+    if (byStatus.no) statusParts.push(`<span style="color:var(--sage);">ใช้ได้ ${fmt(byStatus.no)}</span>`);
+    if (byStatus.yes) statusParts.push(`<span style="color:var(--rust);">ล็อกไว้ ${fmt(byStatus.yes)}</span>`);
+    if (byStatus['']) statusParts.push(`<span class="muted">ไม่ระบุ ${fmt(byStatus[''])}</span>`);
+    div.innerHTML = `<div class="row-between">
+        <input type="text" value="${a.name}" data-key="${a.id}" class="ma-name-input" style="flex:1;margin-right:8px;">
+        <span style="font-weight:600;white-space:nowrap;">${fmt(total)}</span>
+      </div>
+      <div class="row-between" style="margin-top:6px;">
+        <select class="ma-owner-input" data-key="${a.id}">${ownerOptions}</select>
+        <button class="del-btn" data-del-ma="${a.id}" aria-label="ลบบัญชี">✕</button>
+      </div>
+      ${statusParts.length ? `<p class="muted" style="margin:8px 0 0;">${statusParts.join(' · ')}</p>` : ''}
+      ${items.length ? `<p class="muted" style="margin:4px 0 0;">${items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>` : '<p class="muted" style="margin:4px 0 0;">ยังไม่มีกระเป๋าเงิน/เป้าหมายผูกกับบัญชีนี้</p>'}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+        <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
+        <button class="btn" data-ma-move-up="${a.id}" ${aIdx === 0 ? 'disabled style="opacity:0.4;"' : ''}>▲</button>
+        <button class="btn" data-ma-move-down="${a.id}" ${aIdx === mainAccounts.length - 1 ? 'disabled style="opacity:0.4;"' : ''}>▼</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('button[data-ma-move-up]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = mainAccounts.findIndex(a => a.id === btn.dataset.maMoveUp);
+    if (idx > 0) { [mainAccounts[idx - 1], mainAccounts[idx]] = [mainAccounts[idx], mainAccounts[idx - 1]]; await saveMainAccounts(); render(); }
+  }));
+  wrap.querySelectorAll('button[data-ma-move-down]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = mainAccounts.findIndex(a => a.id === btn.dataset.maMoveDown);
+    if (idx < mainAccounts.length - 1) { [mainAccounts[idx + 1], mainAccounts[idx]] = [mainAccounts[idx], mainAccounts[idx + 1]]; await saveMainAccounts(); render(); }
+  }));
+  enableDragReorder(wrap, '[data-drag-id]', '[data-drag-handle]', async (newIds) => {
+    const map = new Map(mainAccounts.map(a => [a.id, a]));
+    const uniqueIds = [...new Set(newIds)];
+    const reordered = uniqueIds.map(id => map.get(id)).filter(Boolean);
+    mainAccounts.forEach(a => { if (!uniqueIds.includes(a.id)) reordered.push(a); });
+    mainAccounts = reordered;
+    await saveMainAccounts(); render();
+  });
+  wrap.querySelectorAll('.ma-name-input').forEach(inp => {
+    inp.addEventListener('change', async () => {
+      const a = mainAccounts.find(x => x.id === inp.dataset.key);
+      if (a && inp.value.trim()) { a.name = inp.value.trim(); await saveMainAccounts(); refreshMainAccountSelects(); render(); }
+    });
+  });
+  wrap.querySelectorAll('.ma-owner-input').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      const a = mainAccounts.find(x => x.id === sel.dataset.key);
+      if (a) { a.owner = sel.value; await saveMainAccounts(); render(); }
+    });
+  });
+  wrap.querySelectorAll('[data-del-ma]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const delId = btn.dataset.delMa;
+      mainAccounts = mainAccounts.filter(a => a.id !== delId);
+      goals.forEach(g => { if (g.mainAccount === delId) g.mainAccount = ''; });
+      wallets.forEach(w => { if (w.mainAccount === delId) w.mainAccount = ''; });
+      await saveMainAccounts(); await saveGoals(); await saveWallets();
+      refreshMainAccountSelects(); render();
+    });
+  });
+}
+let editingFixedId = null;
+let payingFixedId = null;
+
+function advanceDue(dueISO, freq) {
+  const d = new Date(dueISO + 'T00:00:00');
+  if (freq === 'yearly') d.setFullYear(d.getFullYear() + 1); else d.setMonth(d.getMonth() + 1);
+  return toISO(d);
+}
+
+function renderFixedExpensesSummary() {
+  const wrap = document.getElementById('fixed-expenses-summary');
+  wrap.innerHTML = '';
+  if (fixedExpenses.length === 0) return;
+  const monthlyTotal = fixedExpenses.filter(x => x.frequency !== 'yearly').reduce((s, x) => s + x.amount, 0);
+  const yearlyTotal = fixedExpenses.filter(x => x.frequency === 'yearly').reduce((s, x) => s + x.amount, 0);
+  const avgPerMonth = monthlyTotal + (yearlyTotal / 12);
+  const div = document.createElement('div');
+  div.className = 'goal-card';
+  div.style.background = 'var(--paper)';
+  div.innerHTML = `<div class="row-between"><span style="font-weight:600;">เฉลี่ยต่อเดือน (รวมรายปีเฉลี่ยแล้ว)</span><span style="font-weight:600;">${fmt(avgPerMonth)}</span></div>
+    <p class="muted" style="margin:6px 0 0;">รวมรายเดือน ${fmt(monthlyTotal)} · รวมรายปี ${fmt(yearlyTotal)} (${fixedExpenses.length} รายการ)</p>`;
+  wrap.appendChild(div);
+}
+
+function renderFixedExpenses() {
+  const wrap = document.getElementById('fixed-expenses');
+  wrap.innerHTML = '';
+  if (fixedExpenses.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีรายจ่ายประจำ เพิ่มรายการแรกด้านล่าง</p>'; return; }
+  const todayISO = toISO(new Date());
+
+  fixedExpenses.forEach(x => {
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+
+    if (editingFixedId === x.id) {
+      const catOptions = categories.filter(c => c.kind === 'expense').map(c => `<option value="${c.key}" ${c.key === x.category ? 'selected' : ''}>${c.label}</option>`).join('');
+      const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === x.member ? 'selected' : ''}>${m.label}</option>`).join('');
+      div.innerHTML = `
+        <div class="form-grid g2">
+          <input type="text" class="xe-name" value="${x.name}" placeholder="ชื่อ">
+          <input type="number" class="xe-amount" value="${x.amount}" placeholder="จำนวนเงิน" min="0" step="0.01">
+        </div>
+        <div class="form-grid g2">
+          <select class="xe-freq">
+            <option value="monthly" ${x.frequency === 'monthly' ? 'selected' : ''}>รายเดือน</option>
+            <option value="yearly" ${x.frequency === 'yearly' ? 'selected' : ''}>รายปี</option>
+          </select>
+          <select class="xe-category">${catOptions}</select>
+        </div>
+        <div class="form-grid g2">
+          <select class="xe-member">${memberOptions}</select>
+          <input type="date" class="xe-due" value="${x.dueDate || ''}">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-x-cancel="${x.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-x-save="${x.id}">บันทึก</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    const cat = getCat(x.category);
+    const overdue = x.dueDate && x.dueDate < todayISO;
+    const lastPaid = x.history && x.history.length ? x.history[x.history.length - 1] : null;
+    const freqLabel = x.frequency === 'yearly' ? 'รายปี' : 'รายเดือน';
+
+    if (payingFixedId === x.id) {
+      div.innerHTML = `<div class="row-between"><span>${x.name}</span><span style="font-weight:600;">${fmt(x.amount)}</span></div>
+        <p class="muted" style="margin:4px 0 8px;">จ่ายรายการนี้จากกระเป๋าเงินไหน (ไม่บังคับ) จ่ายวันไหนจริง และจ่ายเท่าไหร่ (แก้ได้ถ้ายอดเดือนนี้ไม่เท่าปกติ)</p>
+        <div class="form-grid g2">
+          <select class="pay-account">${walletOptions(defaultBulkWallet)}</select>
+          <input type="date" class="pay-date" value="${toISO(new Date())}">
+        </div>
+        <input type="number" class="pay-amount" value="${x.amount}" min="0" step="0.01" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+          <button class="btn" data-xpay-cancel="${x.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-xpay-confirm="${x.id}">ยืนยันจ่าย</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    div.innerHTML = `<div class="row-between">
+        <span>${x.name} <span class="muted">· ${cat.label} · ${memberLabel(x.member)}</span></span>
+        <span style="font-weight:600;">${fmt(x.amount)} <span class="muted">/ ${freqLabel}</span></span>
+      </div>
+      ${x.dueDate ? `<p class="secondary-text" style="color:${overdue ? 'var(--rust)' : 'var(--text-secondary)'};margin:4px 0;">ครบกำหนดถัดไป ${fmtDateStr(x.dueDate)}${overdue ? ' (เลยกำหนด)' : ''}</p>` : ''}
+      ${lastPaid ? `<p class="muted" style="margin:0 0 8px;">จ่ายล่าสุด ${fmtDateStr(lastPaid.date)} · ${fmt(lastPaid.amount)}</p>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn" data-x-edit="${x.id}">แก้ไข</button>
+        <button class="btn" data-x-del="${x.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
+        <button class="btn btn-primary" data-x-pay="${x.id}">+ บันทึกว่าจ่ายแล้ว</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+
+  wrap.querySelectorAll('button[data-x-edit]').forEach(btn => btn.addEventListener('click', () => {
+    editingFixedId = btn.dataset.xEdit; renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-x-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    editingFixedId = null; renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-x-del]').forEach(btn => btn.addEventListener('click', async () => {
+    fixedExpenses = fixedExpenses.filter(x => x.id !== btn.dataset.xDel);
+    await saveFixedExpenses(); renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-x-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const x = fixedExpenses.find(f => f.id === btn.dataset.xSave);
+    const card = btn.closest('.goal-card');
+    const name = card.querySelector('.xe-name').value.trim();
+    const amount = parseFloat(card.querySelector('.xe-amount').value);
+    if (!name || !amount || amount <= 0) return;
+    x.name = name;
+    x.amount = amount;
+    x.frequency = card.querySelector('.xe-freq').value;
+    x.category = card.querySelector('.xe-category').value;
+    x.member = card.querySelector('.xe-member').value;
+    x.dueDate = card.querySelector('.xe-due').value || '';
+    editingFixedId = null;
+    await saveFixedExpenses(); renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-x-pay]').forEach(btn => btn.addEventListener('click', () => {
+    payingFixedId = btn.dataset.xPay; renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-xpay-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    payingFixedId = null; renderFixedExpenses();
+  }));
+  wrap.querySelectorAll('button[data-xpay-confirm]').forEach(btn => btn.addEventListener('click', async () => {
+    const x = fixedExpenses.find(f => f.id === btn.dataset.xpayConfirm);
+    const div = btn.closest('.goal-card');
+    const account = div.querySelector('.pay-account').value.trim();
+    const payDate = div.querySelector('.pay-date').value || toISO(new Date());
+    const payAmount = parseFloat(div.querySelector('.pay-amount').value);
+    if (!payAmount || payAmount <= 0) return;
+    entries.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      date: payDate,
+      category: x.category,
+      goal: '',
+      member: x.member,
+      payment: 'cash',
+      account: account,
+      amount: payAmount,
+      note: x.name + ' (รายจ่ายประจำ)'
+    });
+    if (!x.history) x.history = [];
+    x.history.push({ date: payDate, amount: payAmount });
+    if (x.dueDate) x.dueDate = advanceDue(x.dueDate, x.frequency);
+    payingFixedId = null;
+    await saveEntries(); await saveFixedExpenses(); refreshAccountList(); render();
+  }));
+}
+
+let editingGoalId = null;
+let payingGoalId = null;
+let resettingGoalId = null;
+let expandedGoalHistory = new Set();
+let bulkLogOpen = false;
+
+function renderBulkLogForm() {
+  const wrap = document.getElementById('bulk-log-form');
+  wrap.innerHTML = '';
+  if (!bulkLogOpen) return;
+  const bulkGoals = goals.filter(g => g.monthly);
+  if (bulkGoals.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมายที่ตั้ง "ยอดต่องวด/เดือน" ไว้</p>'; return; }
+  const defaultPayment = defaultBulkWallet && wallets.some(w => w.id === defaultBulkWallet) ? 'wallet:' + defaultBulkWallet : 'cash';
+  const div = document.createElement('div');
+  div.className = 'card';
+  const paymentOptionsFor = (g) => {
+    const others = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt');
+    return '<option value="cash">เงินสด/โอน</option>'
+      + cards.map(c => `<option value="${c.id}">บัตร ${c.name}</option>`).join('')
+      + wallets.map(w => `<option value="wallet:${w.id}">กระเป๋า: ${w.name}</option>`).join('')
+      + others.map(og => `<option value="goal:${og.id}">เงินสำรอง: ${og.name}</option>`).join('');
+  };
+  const rowsHtml = bulkGoals.map(g => `
+    <div class="goal-card" data-bulk-row="${g.id}">
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" class="bulk-include" data-key="${g.id}" checked>
+        <span style="font-weight:600;">${g.name}</span>
+      </label>
+      <div class="form-grid g2">
+        <div>
+          <p class="muted" style="margin:0 0 4px;">จำนวนเงิน</p>
+          <input type="number" class="bulk-amount" data-key="${g.id}" value="${g.monthly}" min="0" step="0.01">
+        </div>
+        <div>
+          <p class="muted" style="margin:0 0 4px;">วันที่</p>
+          <input type="date" class="bulk-date" data-key="${g.id}" value="${toISO(new Date())}">
+        </div>
+      </div>
+      <p class="muted" style="margin:0 0 4px;">หักจากช่องทางไหน</p>
+      <select class="bulk-payment" data-key="${g.id}">${paymentOptionsFor(g)}</select>
+    </div>`).join('');
+  div.innerHTML = `<h2>บันทึกยอดหลายเป้าหมายพร้อมกัน</h2>
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <button class="btn" id="bulk-select-all">เลือกทั้งหมด</button>
+      <button class="btn" id="bulk-select-none">ยกเลิกทั้งหมด</button>
+    </div>
+    ${rowsHtml}
+    <div class="goal-card" style="background:var(--paper);">
+      <div class="row-between"><span style="font-weight:600;">รวมยอดที่เลือก</span><span style="font-weight:600;" id="bulk-summary-total">฿0</span></div>
+      <p class="muted" style="margin:4px 0 0;" id="bulk-summary-count">0 เป้าหมาย</p>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn" id="bulk-log-cancel">ยกเลิก</button>
+      <button class="btn btn-primary" id="bulk-log-confirm">ยืนยันบันทึกทั้งหมด</button>
+    </div>`;
+  wrap.appendChild(div);
+  bulkGoals.forEach(g => {
+    const sel = div.querySelector(`.bulk-payment[data-key="${g.id}"]`);
+    if ([...sel.options].some(o => o.value === defaultPayment)) sel.value = defaultPayment;
+  });
+
+  function updateBulkSummary() {
+    let total = 0, count = 0;
+    div.querySelectorAll('.bulk-include:checked').forEach(cb => {
+      const amtInput = div.querySelector(`.bulk-amount[data-key="${cb.dataset.key}"]`);
+      const amt = parseFloat(amtInput.value) || 0;
+      total += amt; count++;
+    });
+    div.querySelector('#bulk-summary-total').textContent = fmt(total);
+    div.querySelector('#bulk-summary-count').textContent = count + ' เป้าหมาย';
+  }
+  div.querySelectorAll('.bulk-include').forEach(cb => cb.addEventListener('change', updateBulkSummary));
+  div.querySelectorAll('.bulk-amount').forEach(inp => inp.addEventListener('input', updateBulkSummary));
+  updateBulkSummary();
+  div.querySelector('#bulk-select-all').addEventListener('click', () => {
+    div.querySelectorAll('.bulk-include').forEach(cb => cb.checked = true);
+    updateBulkSummary();
+  });
+  div.querySelector('#bulk-select-none').addEventListener('click', () => {
+    div.querySelectorAll('.bulk-include').forEach(cb => cb.checked = false);
+    updateBulkSummary();
+  });
+  div.querySelector('#bulk-log-cancel').addEventListener('click', () => {
+    bulkLogOpen = false; renderBulkLogForm();
+  });
+  div.querySelector('#bulk-log-confirm').addEventListener('click', async () => {
+    let count = 0;
+    for (const g of bulkGoals) {
+      const cb = div.querySelector(`.bulk-include[data-key="${g.id}"]`);
+      if (!cb.checked) continue;
+      const amount = parseFloat(div.querySelector(`.bulk-amount[data-key="${g.id}"]`).value);
+      if (!amount || amount <= 0) continue;
+      const logDate = div.querySelector(`.bulk-date[data-key="${g.id}"]`).value || toISO(new Date());
+      const payment = div.querySelector(`.bulk-payment[data-key="${g.id}"]`).value;
+      const kind = g.kind === 'debt' ? 'debt' : 'saving';
+      const isGoalTransfer = payment.startsWith('goal:');
+      const isWalletSource = payment.startsWith('wallet:');
+      const sourceGoalId = isGoalTransfer ? payment.slice(5) : null;
+      const sourceGoal = isGoalTransfer ? goals.find(sg => sg.id === sourceGoalId) : null;
+      const sourceWalletId = isWalletSource ? payment.slice(7) : null;
+      const sourceWallet = isWalletSource ? wallets.find(w => w.id === sourceWalletId) : null;
+      entries.push({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + count,
+        date: logDate, category: kind, goal: g.id,
+        member: g.member || 'shared',
+        payment: (isGoalTransfer || isWalletSource) ? 'cash' : payment,
+        account: '', amount: amount,
+        note: (kind === 'debt' ? 'ผ่อนคืนตามแผนรายเดือน' : 'เก็บตามแผนรายเดือน') + (isGoalTransfer ? ' (โอนจาก ' + (sourceGoal?.name || '') + ')' : '') + (isWalletSource ? ' (หักจากกระเป๋า ' + (sourceWallet?.name || '') + ')' : '') + ' (บันทึกพร้อมกันหลายเป้าหมาย)'
+      });
+      if (isGoalTransfer && sourceGoal) {
+        goalTransfers.push({ id: genId(), date: logDate, fromGoalId: sourceGoal.id, toGoalId: g.id, amount, note: 'โอนไปยัง ' + g.name });
+      }
+      if (isWalletSource && sourceWalletId !== g.account) {
+        walletTransactions.push({
+          id: genId(), date: logDate, account: sourceWalletId, amount: -amount,
+          note: (kind === 'debt' ? 'ผ่อนคืน ' : 'เก็บเงิน ') + g.name
+        });
+      }
+      count++;
+    }
+    bulkLogOpen = false;
+    await saveEntries(); await saveGoalTransfers(); await saveWalletTransactions();
+    render();
+  });
+}
+
+function renderGoals() {
+  const wrap = document.getElementById('goals');
+  wrap.innerHTML = '';
+  if (goals.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมาย เพิ่มเป้าหมายแรกด้านล่าง</p>'; return; }
+  const todayISO = toISO(new Date());
+  goals.forEach((g, gIdx) => {
+    const kind = g.kind === 'debt' ? 'debt' : 'saving';
+    const saved = goalSaved(g);
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.dataset.dragId = g.id;
+
+    if (editingGoalId === g.id) {
+      const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === g.member ? 'selected' : ''}>${m.label}</option>`).join('');
+      div.innerHTML = `
+        <div class="form-grid g2">
+          <select class="e-kind">
+            <option value="saving" ${g.kind === 'saving' || !g.kind ? 'selected' : ''}>เงินออม</option>
+            <option value="periodic" ${g.kind === 'periodic' ? 'selected' : ''}>ออมค่าใช้จ่าย</option>
+            <option value="debt" ${g.kind === 'debt' ? 'selected' : ''}>หนี้</option>
+          </select>
+          <input type="text" class="e-name" value="${g.name}" placeholder="ชื่อ">
+        </div>
+        <div class="form-grid g2">
+          <input type="number" class="e-target" value="${g.target || ''}" placeholder="ยอดเป้าหมาย (ไม่บังคับ)" min="0" step="0.01">
+          <input type="date" class="e-due" value="${g.dueDate || ''}">
+        </div>
+        <div class="form-grid g2">
+          <input type="number" class="e-initial" value="${g.initial || ''}" placeholder="ยอดสะสม ณ ปัจจุบัน" min="0" step="0.01">
+          <input type="number" class="e-monthly" value="${g.monthly || ''}" placeholder="ยอดต่องวด/เดือน" min="0" step="0.01">
+        </div>
+        <div class="form-grid g2">
+          <select class="e-account">${walletOptions(g.account)}</select>
+          <select class="e-member">${memberOptions}</select>
+        </div>
+        <div class="form-grid g2">
+          <select class="e-mainaccount">${mainAccountOptions(g.mainAccount)}</select>
+          <div>
+            <select class="e-withdrawable" style="${g.account ? 'display:none;' : ''}">
+              <option value="" ${!g.withdrawable ? 'selected' : ''}>สถานะการดึงมาใช้ (ไม่ระบุ)</option>
+              <option value="yes" ${g.withdrawable === 'yes' ? 'selected' : ''}>ดึงมาใช้ได้ในกรณีจำเป็น</option>
+              <option value="no" ${g.withdrawable === 'no' ? 'selected' : ''}>ห้ามดึงมาใช้ (ล็อกไว้)</option>
+            </select>
+            <p class="muted e-withdrawable-note" style="margin:4px 0 0;${g.account ? '' : 'display:none;'}">มีกระเป๋าเงินแล้ว สถานะจะตามกระเป๋าอัตโนมัติ</p>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn" data-cancel="${g.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-save="${g.id}">บันทึก</button>
+        </div>`;
+      wrap.appendChild(div);
+      div.querySelector('.e-account').addEventListener('change', function () {
+        const has = !!this.value;
+        div.querySelector('.e-withdrawable').style.display = has ? 'none' : '';
+        div.querySelector('.e-withdrawable-note').style.display = has ? '' : 'none';
+      });
+      return;
+    }
+
+    const hasTarget = g.target && g.target > 0;
+    const pct = hasTarget ? Math.min(100, (saved / g.target) * 100) : 0;
+    const overdue = g.dueDate && g.dueDate < todayISO;
+    const lastPaid = g.history && g.history.length ? g.history[g.history.length - 1] : null;
+    const goalTransfersOut = goalTransfers.filter(t => t.fromGoalId === g.id).sort((a, b) => a.date.localeCompare(b.date));
+    const lastTransferOut = goalTransfersOut.length ? goalTransfersOut[goalTransfersOut.length - 1] : null;
+    const thisMonth = todayISO.slice(0, 7);
+    const loggedThisMonthAmount = entries.filter(e => e.category === kind && e.goal === g.id && e.date.slice(0, 7) === thisMonth && (!g.lastResetDate || e.date > g.lastResetDate)).reduce((s, e) => s + e.amount, 0);
+    const goalLogEntries = entries.filter(e => e.category === kind && e.goal === g.id && (!g.lastResetDate || e.date > g.lastResetDate));
+    const lastLoggedEntry = goalLogEntries.length ? goalLogEntries.reduce((a, b) => a.date >= b.date ? a : b) : null;
+
+    if (payingGoalId === g.id) {
+      const otherSavingGoals = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt');
+      const paymentOptions = '<option value="cash">เงินสด/โอน</option>'
+        + cards.map(c => `<option value="${c.id}">บัตร ${c.name}</option>`).join('')
+        + wallets.map(w => `<option value="wallet:${w.id}">กระเป๋า: ${w.name}</option>`).join('')
+        + otherSavingGoals.map(og => `<option value="goal:${og.id}">เงินสำรอง: ${og.name}</option>`).join('');
+      div.innerHTML = `<div class="row-between"><span>${g.name}</span></div>
+        <p class="muted" style="margin:4px 0 8px;">บันทึกยอด ${kind === 'debt' ? 'ผ่อนคืน' : 'เก็บ'} เท่าไหร่ วันไหน และหักจากช่องทางไหน (เก็บกี่ครั้งก็ได้ในเดือนเดียวกัน)</p>
+        <div class="form-grid g2">
+          <input type="number" class="log-amount" value="${g.monthly}" min="0" step="0.01">
+          <input type="date" class="log-date" value="${toISO(new Date())}">
+        </div>
+        <select class="log-payment" style="margin-bottom:8px;">${paymentOptions}</select>
+        ${kind === 'debt' ? `<p class="muted" style="margin:4px 0 8px;">โอนเข้ากระเป๋าปลายทาง (ไม่บังคับ)</p>
+        <select class="log-destination">${walletOptions()}</select>` : ''}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+          <button class="btn" data-log-cancel="${g.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-log-confirm="${g.id}">ยืนยันบันทึก</button>
+        </div>`;
+      wrap.appendChild(div);
+      if (defaultBulkWallet && wallets.some(w => w.id === defaultBulkWallet)) {
+        const sel = div.querySelector('.log-payment');
+        const defaultVal = 'wallet:' + defaultBulkWallet;
+        if ([...sel.options].some(o => o.value === defaultVal)) sel.value = defaultVal;
+      }
+      return;
+    }
+
+    if (resettingGoalId === g.id) {
+      div.innerHTML = `<div class="row-between"><span>${g.name}</span></div>
+        <p class="muted" style="margin:4px 0 8px;">${kind === 'debt' ? 'คืนครบแล้ว' : 'จ่ายแล้ว'} เท่าไหร่ (แก้ได้ถ้าไม่ครบเต็มยอดสะสม ส่วนที่เหลือจะยกยอดไปต่อ)</p>
+        <input type="number" class="reset-amount" value="${saved.toFixed(2)}" min="0" step="0.01" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-reset-cancel="${g.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-reset-confirm="${g.id}">ยืนยันรีเซ็ต</button>
+        </div>`;
+      wrap.appendChild(div);
+      return;
+    }
+
+    const remaining = hasTarget ? Math.max(0, g.target - saved) : 0;
+    const monthsLeft = hasTarget && g.monthly ? Math.ceil(remaining / g.monthly) : null;
+    let completionLabel = '';
+    if (monthsLeft !== null && monthsLeft > 0) {
+      const est = new Date(); est.setMonth(est.getMonth() + monthsLeft);
+      completionLabel = est.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
+    }
+    const kindBadge = kind === 'debt' ? ` <span class="muted" style="color:var(--rust);">· หนี้</span>` : (g.kind === 'periodic' ? ` <span class="muted" style="color:var(--gold);">· ออมค่าใช้จ่าย</span>` : '');
+    const amountLine = hasTarget ? fmt(saved) + ' / ' + fmt(g.target) : fmt(saved);
+    const monthlyVerb = kind === 'debt' ? 'ผ่อนคืนเดือนละ' : 'เก็บเดือนละ';
+    const completionVerb = kind === 'debt' ? 'คาดว่าจะคืนครบประมาณ' : 'คาดว่าจะครบเป้าหมายประมาณ';
+    const doneVerb = kind === 'debt' ? 'คืนครบแล้ว' : 'ครบเป้าหมายแล้ว';
+    const effWithdrawable = effectiveWithdrawable(g);
+    const withdrawTag = effWithdrawable === 'yes'
+      ? '<span class="muted" style="color:var(--sage);">ดึงมาใช้ได้ในกรณีจำเป็น' + (g.account ? ' (ตามกระเป๋า)' : '') + '</span>'
+      : effWithdrawable === 'no'
+      ? '<span class="muted" style="color:var(--rust);">ห้ามดึงมาใช้ (ล็อกไว้)' + (g.account ? ' (ตามกระเป๋า)' : '') + '</span>'
+      : '';
+    div.innerHTML = `<div class="row-between"><span>${g.name}${g.account ? ` <span class="muted">· ${walletLabel(g.account)}</span>` : ''}${g.mainAccount ? ` <span class="muted">· บัญชี: ${mainAccountLabel(g.mainAccount)}</span>` : ''}${g.member ? ` <span class="muted">· ${memberLabel(g.member)}</span>` : ''}${kindBadge}</span><span class="secondary-text">${amountLine}</span></div>
+      ${hasTarget ? `<div class="bar-bg"><div class="bar-fill" style="width:${pct.toFixed(0)}%;${kind === 'debt' ? 'background:var(--rust);' : ''}"></div></div>` : ''}
+      ${withdrawTag ? `<p style="margin:0 0 4px;">${withdrawTag}</p>` : ''}
+      ${g.monthly ? `<p class="muted" style="margin:0 0 4px;">${monthlyVerb} ${fmt(g.monthly)}${monthsLeft !== null ? (monthsLeft > 0 ? ' · ' + completionVerb + ' ' + completionLabel + ' (อีก ' + monthsLeft + ' เดือน)' : ' · ' + doneVerb) : ''}</p>` : ''}
+      ${g.dueDate ? `<p class="secondary-text" style="color:${overdue ? 'var(--rust)' : 'var(--text-secondary)'};margin:0 0 4px;">กำหนดชำระ ${fmtDateStr(g.dueDate)}${overdue ? ' (เลยกำหนด)' : ''}</p>` : ''}
+      ${lastPaid ? `<p class="muted" style="margin:0 0 4px;">${kind === 'debt' ? 'คืนล่าสุด' : 'จ่ายล่าสุด'} ${fmtDateStr(lastPaid.date)} · ${fmt(lastPaid.amount)}</p>` : ''}
+      ${g.history && g.history.length > 1 ? `<button class="btn" data-goal-history-toggle="${g.id}" style="margin-bottom:8px;font-size:12px;padding:4px 10px;">${expandedGoalHistory.has(g.id) ? 'ซ่อนประวัติ ▲' : 'ดูประวัติทั้งหมด (' + g.history.length + ' ครั้ง) ▼'}</button>` : ''}
+      ${expandedGoalHistory.has(g.id) ? `<div style="margin:0 0 8px;">${[...g.history].map((h, idx) => ({ h, idx })).reverse().map(({ h, idx }) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${fmtDateStr(h.date)} · ${fmt(h.amount)}</span><button class="del-btn" data-del-goal-history="${g.id}" data-history-idx="${idx}" aria-label="ลบประวัตินี้">✕</button></div>`).join('')}</div>` : ''}
+      ${lastTransferOut ? `<p class="muted" style="margin:0 0 8px;">โอนออกล่าสุด ${fmtDateStr(lastTransferOut.date)} · -${fmt(lastTransferOut.amount)} → ${goals.find(og => og.id === lastTransferOut.toGoalId)?.name || ''}</p>` : ''}
+      ${loggedThisMonthAmount > 0 ? `<p class="muted" style="margin:0 0 8px;">เดือนนี้บันทึกไปแล้ว ${fmt(loggedThisMonthAmount)}${lastLoggedEntry ? ' · ล่าสุด ' + fmtDateStr(lastLoggedEntry.date) + ' (' + fmt(lastLoggedEntry.amount) + ')' : ''}</p>` : ''}
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+        <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
+        <button class="btn" data-move-up="${g.id}" ${gIdx === 0 ? 'disabled style="opacity:0.4;"' : ''}>▲</button>
+        <button class="btn" data-move-down="${g.id}" ${gIdx === goals.length - 1 ? 'disabled style="opacity:0.4;"' : ''}>▼</button>
+        <button class="btn" data-edit="${g.id}">แก้ไข</button>
+        <button class="btn" data-del-goal="${g.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
+        ${g.monthly ? `<button class="btn" data-log-open="${g.id}">+ บันทึกยอด${loggedThisMonthAmount > 0 ? 'เพิ่ม' : 'เดือนนี้'} (${fmt(g.monthly)})</button>` : ''}
+        <button class="btn" data-reset-open="${g.id}">✓ ${kind === 'debt' ? 'คืนครบแล้ว รีเซ็ต' : 'จ่ายแล้ว รีเซ็ต'}</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+  wrap.querySelectorAll('button[data-move-up]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = goals.findIndex(g => g.id === btn.dataset.moveUp);
+    if (idx > 0) { [goals[idx - 1], goals[idx]] = [goals[idx], goals[idx - 1]]; await saveGoals(); render(); }
+  }));
+  wrap.querySelectorAll('button[data-move-down]').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = goals.findIndex(g => g.id === btn.dataset.moveDown);
+    if (idx < goals.length - 1) { [goals[idx + 1], goals[idx]] = [goals[idx], goals[idx + 1]]; await saveGoals(); render(); }
+  }));
+  enableDragReorder(wrap, '[data-drag-id]', '[data-drag-handle]', async (newIds) => {
+    const map = new Map(goals.map(g => [g.id, g]));
+    const uniqueIds = [...new Set(newIds)];
+    const reordered = uniqueIds.map(id => map.get(id)).filter(Boolean);
+    goals.forEach(g => { if (!uniqueIds.includes(g.id)) reordered.push(g); });
+    goals = reordered;
+    await saveGoals(); render();
+  });
+  wrap.querySelectorAll('button[data-reset-open]').forEach(btn => btn.addEventListener('click', () => {
+    resettingGoalId = btn.dataset.resetOpen; renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-reset-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    resettingGoalId = null; renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-goal-history-toggle]').forEach(btn => btn.addEventListener('click', () => {
+    const id = btn.dataset.goalHistoryToggle;
+    if (expandedGoalHistory.has(id)) expandedGoalHistory.delete(id); else expandedGoalHistory.add(id);
+    renderGoals();
+  }));
+  wrap.querySelectorAll('[data-del-goal-history]').forEach(btn => btn.addEventListener('click', async () => {
+    const goal = goals.find(g => g.id === btn.dataset.delGoalHistory);
+    const idx = parseInt(btn.dataset.historyIdx, 10);
+    if (!goal || !goal.history) return;
+    goal.history.splice(idx, 1);
+    await saveGoals(); render();
+  }));
+  wrap.querySelectorAll('button[data-log-open]').forEach(btn => btn.addEventListener('click', () => {
+    payingGoalId = btn.dataset.logOpen; renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-log-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    payingGoalId = null; renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-log-confirm]').forEach(btn => btn.addEventListener('click', async () => {
+    const goal = goals.find(g => g.id === btn.dataset.logConfirm);
+    const kind = goal.kind === 'debt' ? 'debt' : 'saving';
+    const div = btn.closest('.goal-card');
+    const amount = parseFloat(div.querySelector('.log-amount').value);
+    if (!amount || amount <= 0) return;
+    const logDate = div.querySelector('.log-date').value || toISO(new Date());
+    const payment = div.querySelector('.log-payment').value;
+    const isGoalTransfer = payment.startsWith('goal:');
+    const isWalletSource = payment.startsWith('wallet:');
+    const sourceGoalId = isGoalTransfer ? payment.slice(5) : null;
+    const sourceGoal = isGoalTransfer ? goals.find(sg => sg.id === sourceGoalId) : null;
+    const sourceWalletId = isWalletSource ? payment.slice(7) : null;
+    const sourceWallet = isWalletSource ? wallets.find(w => w.id === sourceWalletId) : null;
+    entries.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      date: logDate,
+      category: kind,
+      goal: goal.id,
+      member: goal.member || 'shared',
+      payment: (isGoalTransfer || isWalletSource) ? 'cash' : payment,
+      account: '',
+      amount: amount,
+      note: (kind === 'debt' ? 'ผ่อนคืนตามแผนรายเดือน' : 'เก็บตามแผนรายเดือน') + (isGoalTransfer ? ' (โอนจาก ' + (sourceGoal?.name || '') + ')' : '') + (isWalletSource ? ' (หักจากกระเป๋า ' + (sourceWallet?.name || '') + ')' : '')
+    });
+    if (isGoalTransfer && sourceGoal) {
+      goalTransfers.push({
+        id: genId(), date: logDate,
+        fromGoalId: sourceGoal.id, toGoalId: goal.id,
+        amount, note: 'โอนไปยัง ' + goal.name
+      });
+      await saveGoalTransfers();
+    }
+    // Deduct from the chosen source wallet — but only if it's a DIFFERENT wallet from the goal's own
+    // linked wallet. If they're the same, the goal's accumulated total already flows into that wallet's
+    // balance automatically (via the goal-linked-wallet rule), so an extra deduction here would double-count.
+    if (isWalletSource && sourceWalletId !== goal.account) {
+      walletTransactions.push({
+        id: genId(), date: logDate,
+        account: sourceWalletId, amount: -amount,
+        note: (kind === 'debt' ? 'ผ่อนคืน ' : 'เก็บเงิน ') + goal.name
+      });
+      await saveWalletTransactions();
+    }
+    if (kind === 'debt') {
+      const destSelect = div.querySelector('.log-destination');
+      const destWalletId = destSelect ? destSelect.value : '';
+      if (destWalletId && destWalletId !== goal.account) {
+        const destWallet = wallets.find(w => w.id === destWalletId);
+        walletTransactions.push({
+          id: genId(), date: logDate,
+          account: destWalletId, amount: amount,
+          note: 'ผ่อนคืน ' + goal.name + ' เข้า ' + (destWallet?.name || '')
+        });
+        await saveWalletTransactions();
+      }
+    }
+    payingGoalId = null;
+    await saveEntries(); render();
+  }));
+  wrap.querySelectorAll('button[data-edit]').forEach(btn => btn.addEventListener('click', () => {
+    editingGoalId = btn.dataset.edit;
+    renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-del-goal]').forEach(btn => btn.addEventListener('click', async () => {
+    goals = goals.filter(g => g.id !== btn.dataset.delGoal);
+    await saveGoals(); refreshGoalSelect(); render();
+  }));
+  wrap.querySelectorAll('button[data-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    editingGoalId = null;
+    renderGoals();
+  }));
+  wrap.querySelectorAll('button[data-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const goal = goals.find(g => g.id === btn.dataset.save);
+    const card = btn.closest('.goal-card');
+    const name = card.querySelector('.e-name').value.trim();
+    if (!name) return;
+    const targetRaw = parseFloat(card.querySelector('.e-target').value);
+    goal.kind = card.querySelector('.e-kind').value;
+    goal.name = name;
+    goal.target = isNaN(targetRaw) || targetRaw <= 0 ? null : targetRaw;
+    goal.dueDate = card.querySelector('.e-due').value || '';
+    goal.initial = parseFloat(card.querySelector('.e-initial').value) || 0;
+    const monthlyRaw = parseFloat(card.querySelector('.e-monthly').value);
+    goal.monthly = isNaN(monthlyRaw) || monthlyRaw <= 0 ? null : monthlyRaw;
+    goal.account = card.querySelector('.e-account').value.trim();
+    goal.member = card.querySelector('.e-member').value;
+    goal.mainAccount = card.querySelector('.e-mainaccount').value.trim();
+    goal.withdrawable = card.querySelector('.e-withdrawable').value;
+    editingGoalId = null;
+    await saveGoals(); refreshGoalSelect(); refreshAccountList(); render();
+  }));
+  wrap.querySelectorAll('button[data-reset-confirm]').forEach(btn => btn.addEventListener('click', async () => {
+    const goal = goals.find(g => g.id === btn.dataset.resetConfirm);
+    const div = btn.closest('.goal-card');
+    const saved = goalSaved(goal);
+    const resetAmount = parseFloat(div.querySelector('.reset-amount').value);
+    if (isNaN(resetAmount) || resetAmount < 0) return;
+    if (!goal.history) goal.history = [];
+    const today = toISO(new Date());
+    goal.history.push({ date: today, amount: resetAmount });
+    goal.initial = saved - resetAmount;
+    goal.lastResetDate = today;
+    resettingGoalId = null;
+    await saveGoals(); render();
+  }));
+}
+
+
+function renderGoalTypeSummary() {
+  const wrap = document.getElementById('goal-type-summary');
+  wrap.innerHTML = '';
+  if (goals.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมาย เพิ่มเป้าหมายก่อนเพื่อดูสรุปที่นี่</p>'; return; }
+  const typeLabels = { saving: 'เงินออม', periodic: 'ออมค่าใช้จ่าย', debt: 'หนี้' };
+  const typeColors = { saving: 'var(--sage)', periodic: 'var(--gold)', debt: 'var(--rust)' };
+  const grouped = { saving: { total: 0, items: [] }, periodic: { total: 0, items: [] }, debt: { total: 0, items: [] } };
+  goals.forEach(g => {
+    const t = g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving');
+    const saved = goalSaved(g);
+    grouped[t].total += saved;
+    grouped[t].items.push({ name: g.name, saved });
+  });
+  ['saving', 'periodic', 'debt'].forEach(t => {
+    if (grouped[t].items.length === 0) return;
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="color:${typeColors[t]};font-weight:600;">${typeLabels[t]}</span><span style="font-weight:600;">${fmt(grouped[t].total)}</span></div>
+      <p class="muted" style="margin:4px 0 0;">${grouped[t].items.map(it => it.name + ' ' + fmt(it.saved)).join(' · ')}</p>`;
+    wrap.appendChild(div);
+  });
+}
+
+function renderWithdrawableSummary() {
+  const wrap = document.getElementById('withdrawable-summary');
+  wrap.innerHTML = '';
+  const statusLabels = { yes: 'ดึงมาใช้ได้ในกรณีจำเป็น', no: 'ห้ามดึงมาใช้ (ล็อกไว้)', '': 'ไม่ระบุสถานะ' };
+  const statusColors = { yes: 'var(--sage)', no: 'var(--rust)', '': 'var(--text-muted)' };
+  const grouped = {};
+  let grandTotal = 0;
+  goals.filter(g => (g.kind || 'saving') !== 'debt').forEach(g => {
+    const saved = goalSaved(g);
+    const key = effectiveWithdrawable(g);
+    if (!grouped[key]) grouped[key] = { total: 0, items: [] };
+    grouped[key].total += saved;
+    grouped[key].items.push({ name: g.name, saved });
+    grandTotal += saved;
+  });
+  const keys = Object.keys(grouped);
+  if (keys.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมายเงินออม เพิ่มเป้าหมายก่อนเพื่อดูสรุปที่นี่</p>'; return; }
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทั้งหมด</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>`;
+  wrap.appendChild(totalDiv);
+  ['yes', 'no', ''].forEach(key => {
+    if (!grouped[key]) return;
+    const g = grouped[key];
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="color:${statusColors[key]};">${statusLabels[key]}</span><span style="font-weight:600;">${fmt(g.total)}</span></div>
+      <p class="muted" style="margin:4px 0 0;">${g.items.map(it => it.name + ' ' + fmt(it.saved)).join(' · ')}</p>`;
+    wrap.appendChild(div);
+  });
+}
+
+function refreshAccountList() {
+  const mainDl = document.getElementById('main-account-list');
+  const mainNames = [...new Set([...goals.map(g => g.mainAccount), ...wallets.map(w => w.mainAccount)].filter(Boolean))];
+  mainDl.innerHTML = mainNames.map(n => `<option value="${n}"></option>`).join('');
+}
+
+function renderChartLegend(elId, list, totals, keyFn) {
+  const wrap = document.getElementById(elId);
+  wrap.innerHTML = '';
+  const grandTotal = list.reduce((s, item) => s + totals[keyFn(item)], 0);
+  list.forEach(item => {
+    const val = totals[keyFn(item)];
+    const pct = grandTotal > 0 ? (val / grandTotal * 100) : 0;
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;';
+    row.innerHTML = `<span class="dot" style="background:${item.color};flex-shrink:0;"></span>
+      <span style="flex:1;color:var(--text-secondary);">${item.label}</span>
+      <span style="white-space:nowrap;">${fmt(val)} <span class="muted">(${pct.toFixed(0)}%)</span></span>`;
+    wrap.appendChild(row);
+  });
+}
+
+function renderCycleBreakdown() {
+  const goalTypeMeta = {
+    saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+    periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+    debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+  };
+  const catTotals = {}, memberTotals = {}, catMeta = {};
+  const addEntry = (e) => {
+    let key;
+    if (e.goal) {
+      const g = goals.find(gg => gg.id === e.goal);
+      const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+      key = 'goal_' + gk;
+      catMeta[key] = goalTypeMeta[gk];
+    } else {
+      key = e.category;
+      const cat = getCat(e.category);
+      catMeta[key] = { label: cat.label, color: cat.color };
+    }
+    catTotals[key] = (catTotals[key] || 0) + e.amount;
+    const mk = e.member || 'shared';
+    memberTotals[mk] = (memberTotals[mk] || 0) + e.amount;
+  };
+  // Cash/transfer expenses actually paid this month
+  entries.filter(e => getCat(e.category).kind === 'expense' && e.payment === 'cash' && e.date.slice(0, 7) === currentViewMonth).forEach(addEntry);
+  // For each card payment made this month, reconstruct the underlying purchases that made up that bill
+  cards.forEach(c => {
+    const cardPayments = walletTransactions.filter(t => t.note === 'ชำระบัตร ' + c.name).sort((a, b) => a.date.localeCompare(b.date));
+    cardPayments.forEach((t, i) => {
+      if (t.date.slice(0, 7) !== currentViewMonth) return;
+      if (t.cycleFrom && t.cycleTo) {
+        entries.filter(e => e.payment === c.id && e.date >= t.cycleFrom && e.date <= t.cycleTo).forEach(addEntry);
+      } else {
+        const prevPaymentDate = i > 0 ? cardPayments[i - 1].date : '';
+        let upperBound = t.date;
+        // For the most recent payment on this card, the true cycle-close date can be derived exactly
+        // from the card's current cycleStart (advanceCardCycle always sets cycleStart = old closeDate + 1 day),
+        // which is more reliable than the payment's own (possibly backdated) click date.
+        if (i === cardPayments.length - 1) {
+          const derivedClose = new Date(c.cycleStart + 'T00:00:00');
+          derivedClose.setDate(derivedClose.getDate() - 1);
+          upperBound = toISO(derivedClose);
+        }
+        entries.filter(e => e.payment === c.id && (!prevPaymentDate || e.date > prevPaymentDate) && e.date <= upperBound).forEach(addEntry);
+      }
+    });
+  });
+  const catList = Object.keys(catTotals).map(k => ({ key: k, label: catMeta[k].label, color: catMeta[k].color }));
+  const memberList = members.filter(m => memberTotals[m.key]).map(m => ({ key: m.key, label: m.label, color: m.color }));
+  renderChartLegend('cycle-cat-legend', catList, catTotals, item => item.key);
+  renderChartLegend('cycle-member-legend', memberList, memberTotals, item => item.key);
+  const cycleGrandTotal = Object.values(catTotals).reduce((s, v) => s + v, 0);
+  document.getElementById('cycle-view-total').textContent = 'รวม: ' + fmt(cycleGrandTotal);
+
+  if (cycleCatChart) cycleCatChart.destroy();
+  if (cycleMemberChart) cycleMemberChart.destroy();
+  const makeCycleOpts = () => ({
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const total = ctx.dataset.data.reduce((s, v) => s + v, 0);
+            const pct = total > 0 ? (ctx.parsed / total * 100) : 0;
+            return ctx.label + ': ' + fmt(ctx.parsed) + ' (' + pct.toFixed(0) + '%)';
+          }
+        }
+      }
+    },
+    cutout: '60%'
+  });
+  if (catList.length) {
+    cycleCatChart = new Chart(document.getElementById('chart-cycle-cat'), {
+      type: 'doughnut',
+      data: { labels: catList.map(c => c.label), datasets: [{ data: catList.map(c => catTotals[c.key]), backgroundColor: catList.map(c => c.color), borderWidth: 0 }] },
+      options: makeCycleOpts()
+    });
+  }
+  if (memberList.length) {
+    cycleMemberChart = new Chart(document.getElementById('chart-cycle-member'), {
+      type: 'doughnut',
+      data: { labels: memberList.map(m => m.label), datasets: [{ data: memberList.map(m => memberTotals[m.key]), backgroundColor: memberList.map(m => m.color), borderWidth: 0 }] },
+      options: makeCycleOpts()
+    });
+  }
+}
+
+function renderCharts() {
+  const catTotals = {}, memberTotals = {}, catMeta = {};
+  const goalTypeMeta = {
+    saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+    periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+    debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+  };
+  entries.filter(e => getCat(e.category).kind === 'expense' && e.date.slice(0, 7) === currentViewMonth).forEach(e => {
+    let key;
+    if (e.goal) {
+      const g = goals.find(gg => gg.id === e.goal);
+      const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+      key = 'goal_' + gk;
+      catMeta[key] = goalTypeMeta[gk];
+    } else {
+      key = e.category;
+      const c = getCat(e.category);
+      catMeta[key] = { label: c.label, color: c.color };
+    }
+    catTotals[key] = (catTotals[key] || 0) + e.amount;
+    const mk = e.member || 'shared';
+    memberTotals[mk] = (memberTotals[mk] || 0) + e.amount;
+  });
+  const catList = Object.keys(catTotals).map(k => ({ key: k, label: catMeta[k].label, color: catMeta[k].color }));
+  const memberList = members.filter(m => memberTotals[m.key]).map(m => ({ key: m.key, label: m.label, color: m.color }));
+  const catListForLegend = catList;
+  const monthGrandTotal = Object.values(catTotals).reduce((s, v) => s + v, 0);
+  document.getElementById('month-view-total').textContent = 'รวม: ' + fmt(monthGrandTotal);
+
+  if (catChart) catChart.destroy();
+  if (memberChart) memberChart.destroy();
+  const makeOpts = (totals) => ({
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx) => {
+            const total = ctx.dataset.data.reduce((s, v) => s + v, 0);
+            const pct = total > 0 ? (ctx.parsed / total * 100) : 0;
+            return ctx.label + ': ' + fmt(ctx.parsed) + ' (' + pct.toFixed(0) + '%)';
+          }
+        }
+      }
+    },
+    cutout: '60%'
+  });
+  if (catList.length) {
+    catChart = new Chart(document.getElementById('chart-cat'), {
+      type: 'doughnut',
+      data: { labels: catList.map(c => c.label), datasets: [{ data: catList.map(c => catTotals[c.key]), backgroundColor: catList.map(c => c.color), borderWidth: 0 }] },
+      options: makeOpts(catTotals)
+    });
+  }
+  renderChartLegend('chart-cat-legend', catListForLegend, catTotals, item => item.key);
+  if (memberList.length) {
+    memberChart = new Chart(document.getElementById('chart-member'), {
+      type: 'doughnut',
+      data: { labels: memberList.map(m => m.label), datasets: [{ data: memberList.map(m => memberTotals[m.key]), backgroundColor: memberList.map(m => m.color), borderWidth: 0 }] },
+      options: makeOpts(memberTotals)
+    });
+  }
+  renderChartLegend('chart-member-legend', memberList, memberTotals, item => item.key);
+}
+
+let editingEntryId = null;
+
+let ledgerSearch = '';
+let ledgerSearchFrom = '';
+let ledgerSearchTo = '';
+let ledgerShowCount = 50;
+function renderLedger() {
+  const ledger = document.getElementById('ledger');
+  ledger.innerHTML = '';
+  let list = [...entries];
+  if (ledgerFilter !== 'all') list = list.filter(e => getCat(e.category).kind === ledgerFilter);
+  if (ledgerSearchFrom) list = list.filter(e => e.date >= ledgerSearchFrom);
+  if (ledgerSearchTo) list = list.filter(e => e.date <= ledgerSearchTo);
+  if (ledgerSearch.trim()) {
+    const q = ledgerSearch.trim().toLowerCase();
+    list = list.filter(e => {
+      const haystack = [e.note, getCat(e.category).label, memberLabel(e.member), paymentLabel(e.payment), walletLabel(e.account), e.date].join(' ').toLowerCase();
+      return haystack.includes(q);
+    });
+  }
+  list.sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
+  if (list.length === 0) { ledger.innerHTML = '<p class="empty">' + ((ledgerSearch.trim() || ledgerSearchFrom || ledgerSearchTo) ? 'ไม่พบรายการที่ตรงกับเงื่อนไขที่เลือก' : 'ยังไม่มีรายการ') + '</p>'; return; }
+  const totalCount = list.length;
+  const visibleList = list.slice(0, ledgerShowCount);
+  visibleList.forEach(e => {
+    const row = document.createElement('div');
+
+    if (editingEntryId === e.id) {
+      row.className = 'ledger-item';
+      row.style.display = 'block';
+      const catOptions = categories.map(c => `<option value="${c.key}" ${c.key === e.category ? 'selected' : ''}>${c.label}</option>`).join('');
+      const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === e.member ? 'selected' : ''}>${m.label}</option>`).join('');
+      const paymentOptions = '<option value="cash">จ่ายด้วยเงินสด/โอน</option>' + cards.map(c => `<option value="${c.id}" ${c.id === e.payment ? 'selected' : ''}>จ่ายด้วยบัตร ${c.name}</option>`).join('');
+      const relevantGoals = goals.filter(g => (g.kind === 'debt' ? 'debt' : 'saving') === e.category);
+      const goalOptions = '<option value="">ไม่ระบุเป้าหมาย</option>' + relevantGoals.map(g => `<option value="${g.id}" ${g.id === e.goal ? 'selected' : ''}>${g.name}</option>`).join('');
+      row.innerHTML = `
+        <div class="form-grid g2">
+          <input type="date" class="le-date" value="${e.date}">
+          <select class="le-category">${catOptions}</select>
+        </div>
+        ${(e.category === 'saving' || e.category === 'debt') ? `<div style="margin-bottom:8px;"><select class="le-goal">${goalOptions}</select></div>` : ''}
+        <div class="form-grid g2">
+          <input type="number" class="le-amount" value="${e.amount}" min="0" step="0.01">
+          <select class="le-member">${memberOptions}</select>
+        </div>
+        <div class="form-grid g2">
+          <select class="le-payment">${paymentOptions}</select>
+          <select class="le-account">${walletOptions(e.account)}</select>
+        </div>
+        <input type="text" class="le-note" value="${e.note || ''}" placeholder="รายละเอียด" style="margin-bottom:8px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-le-cancel="${e.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-le-save="${e.id}">บันทึก</button>
+        </div>`;
+      ledger.appendChild(row);
+      return;
+    }
+
+    const c = getCat(e.category);
+    const goalTag = (e.category === 'saving' || e.category === 'debt') && e.goal ? (goals.find(g => g.id === e.goal)?.name || '') : '';
+    row.className = 'ledger-item';
+    row.innerHTML = `<div class="badge" style="background:${c.color}22;color:${c.color};">${c.label.charAt(0)}</div>
+      <div style="flex:1;min-width:0;">
+        <p style="margin:0;font-size:14px;">${c.label}${goalTag ? ' · ' + goalTag : ''}${e.note ? ' · ' + e.note : ''}</p>
+        <p class="muted" style="margin:2px 0 0;">${e.date} · ${memberLabel(e.member)} · ${paymentLabel(e.payment)}${e.account ? ' · ' + walletLabel(e.account) : ''}</p>
+      </div>
+      <span style="font-size:14px;font-weight:600;color:${c.kind === 'income' ? 'var(--sage)' : 'var(--rust)'};white-space:nowrap;">${c.kind === 'income' ? '+' : '-'}${fmt(e.amount)}</span>
+      <button class="del-btn" data-edit-id="${e.id}" aria-label="แก้ไขรายการ" title="แก้ไข">✎</button>
+      <button class="del-btn" data-id="${e.id}" aria-label="ลบรายการ">✕</button>`;
+    ledger.appendChild(row);
+  });
+  if (totalCount > visibleList.length) {
+    const moreDiv = document.createElement('div');
+    moreDiv.style.cssText = 'text-align:center;margin-top:10px;';
+    moreDiv.innerHTML = `<button class="btn" id="ledger-show-more">แสดงเพิ่มเติม (เหลืออีก ${totalCount - visibleList.length} รายการ)</button>`;
+    ledger.appendChild(moreDiv);
+    document.getElementById('ledger-show-more').addEventListener('click', () => {
+      ledgerShowCount += 50;
+      renderLedger();
+    });
+  }
+  ledger.querySelectorAll('[data-edit-id]').forEach(btn => btn.addEventListener('click', () => {
+    editingEntryId = btn.dataset.editId; renderLedger();
+  }));
+  ledger.querySelectorAll('[data-le-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    editingEntryId = null; renderLedger();
+  }));
+  ledger.querySelectorAll('[data-le-save]').forEach(btn => btn.addEventListener('click', async () => {
+    const entry = entries.find(x => x.id === btn.dataset.leSave);
+    const row = btn.closest('.ledger-item');
+    const amount = parseFloat(row.querySelector('.le-amount').value);
+    if (!amount || amount <= 0) return;
+    entry.date = row.querySelector('.le-date').value || entry.date;
+    entry.category = row.querySelector('.le-category').value;
+    const goalSel = row.querySelector('.le-goal');
+    entry.goal = goalSel ? goalSel.value : '';
+    entry.amount = amount;
+    entry.member = row.querySelector('.le-member').value;
+    entry.payment = row.querySelector('.le-payment').value;
+    entry.account = row.querySelector('.le-account').value.trim();
+    entry.note = row.querySelector('.le-note').value.trim();
+    editingEntryId = null;
+    await saveEntries(); refreshAccountList(); render();
+  }));
+  ledger.querySelectorAll('.del-btn[data-id]').forEach(btn => btn.addEventListener('click', async () => {
+    entries = entries.filter(e => e.id !== btn.dataset.id);
+    await saveEntries(); render();
+  }));
+}
+
+function render() {
+  document.getElementById('month-label').textContent = monthLabel(currentViewMonth);
+  const flow = cashFlowForMonth(currentViewMonth);
+  document.getElementById('m-income').textContent = fmt(flow.income);
+  document.getElementById('m-expense').textContent = fmt(flow.expense);
+  const balEl = document.getElementById('m-balance');
+  balEl.textContent = fmt(flow.balance);
+  balEl.style.color = flow.balance < 0 ? 'var(--rust)' : 'var(--text-primary)';
+
+  let outstandingPrev = 0;
+  cards.forEach(c => {
+    entries.filter(e => e.payment === c.id && e.date >= c.cycleStart && e.date <= c.closeDate && e.date.slice(0, 7) < currentViewMonth).forEach(e => {
+      outstandingPrev += e.amount;
+    });
+  });
+  document.getElementById('m-outstanding-prev').textContent = fmt(outstandingPrev);
+
+  let savingsTotal = 0, savingsLocked = 0, savingsAvailable = 0, savingsUnspecified = 0;
+  wallets.filter(w => w.type === 'saving').forEach(w => {
+    const bal = walletBalance(w);
+    savingsTotal += bal;
+    if (w.locked === 'yes') savingsLocked += bal;
+    else if (w.locked === 'no') savingsAvailable += bal;
+    else savingsUnspecified += bal;
+  });
+  document.getElementById('m-savings-total').textContent = fmt(savingsTotal);
+  document.getElementById('m-savings-available').textContent = fmt(savingsAvailable);
+  document.getElementById('m-savings-locked').textContent = fmt(savingsLocked);
+  document.getElementById('m-savings-unspecified').textContent = fmt(savingsUnspecified);
+
+  let spendingTotal = 0, spendingLocked = 0, spendingAvailable = 0, spendingUnspecified = 0;
+  wallets.filter(w => w.type !== 'saving').forEach(w => {
+    const bal = walletBalance(w);
+    spendingTotal += bal;
+    if (w.locked === 'yes') spendingLocked += bal;
+    else if (w.locked === 'no') spendingAvailable += bal;
+    else spendingUnspecified += bal;
+  });
+  document.getElementById('m-spending-total').textContent = fmt(spendingTotal);
+  document.getElementById('m-spending-available').textContent = fmt(spendingAvailable);
+  document.getElementById('m-spending-locked').textContent = fmt(spendingLocked);
+  document.getElementById('m-spending-unspecified').textContent = fmt(spendingUnspecified);
+
+  document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+
+  renderUpcoming();
+  renderMonthlyHistory();
+  renderCardsSummary();
+  renderCards();
+  renderFixedExpensesSummary();
+  renderFixedExpenses();
+  renderBulkLogForm();
+  renderGoals();
+  renderGoalTypeSummary();
+  renderWithdrawableSummary();
+  renderCharts();
+  renderCycleBreakdown();
+  renderLedger();
+  renderMembersManager();
+  renderCategoryManager();
+  renderMerchantRulesManager();
+  refreshBillImportSelects();
+  renderWalletsManager();
+  renderWalletStatusSummary();
+  renderMainAccountsManager();
+}
+
+async function saveEntries() { try { await window.storage.set(ENTRIES_KEY, JSON.stringify(entries), true); } catch (e) { console.error(e); } }
+async function saveGoals() { try { await window.storage.set(GOALS_KEY, JSON.stringify(goals), true); } catch (e) { console.error(e); } }
+async function saveCards() { try { await window.storage.set(CARDS_KEY, JSON.stringify(cards), true); } catch (e) { console.error(e); } }
+async function saveMembers() { try { await window.storage.set(MEMBERS_KEY, JSON.stringify(members), true); } catch (e) { console.error(e); } }
+async function saveFixedExpenses() { try { await window.storage.set(FIXED_KEY, JSON.stringify(fixedExpenses), true); } catch (e) { console.error(e); } }
+async function saveWalletTransactions() { try { await window.storage.set(WALLET_TX_KEY, JSON.stringify(walletTransactions), true); } catch (e) { console.error(e); } }
+async function saveGoalTransfers() { try { await window.storage.set(GOAL_TRANSFERS_KEY, JSON.stringify(goalTransfers), true); } catch (e) { console.error(e); } }
+async function saveWallets() { try { await window.storage.set(WALLETS_KEY, JSON.stringify(wallets), true); } catch (e) { console.error(e); } }
+async function saveMainAccounts() { try { await window.storage.set(MAINACCOUNTS_KEY, JSON.stringify(mainAccounts), true); } catch (e) { console.error(e); } }
+async function saveMerchantRules() { try { await window.storage.set(MERCHANT_RULES_KEY, JSON.stringify(merchantRules), true); } catch (e) { console.error(e); } }
+async function saveDefaultBulkWallet() { try { await window.storage.set(DEFAULT_BULK_WALLET_KEY, JSON.stringify(defaultBulkWallet), true); } catch (e) { console.error(e); } }
+async function saveCategories() { try { await window.storage.set(CATEGORIES_KEY, JSON.stringify(categories), true); } catch (e) { console.error(e); } }
+
+async function load() {
+  let entriesLoadOk = true, goalsLoadOk = true, walletsLoadOk = true, walletTxLoadOk = true, mainAccountsLoadOk = true;
+  try { const r = await window.storage.get(ENTRIES_KEY, true); entries = r ? JSON.parse(r.value) : []; } catch (e) { entries = []; entriesLoadOk = false; }
+  try { const r = await window.storage.get(GOALS_KEY, true); goals = r ? JSON.parse(r.value) : []; } catch (e) { goals = []; goalsLoadOk = false; }
+  try {
+    const r = await window.storage.get(CARDS_KEY, true);
+    if (r && JSON.parse(r.value).length) { cards = JSON.parse(r.value); }
+    else { cards = defaultCards(); await saveCards(); }
+  } catch (e) { cards = defaultCards(); }
+  let cardsMigrated = false;
+  const knownCloseDates = {
+    'Nan BAY Lady 2980': '2026-07-15', 'Nan BAY 1st Choice 8410': '2026-07-19',
+    'Nan BAY HomePro 4631': '2026-07-18', 'Nan BAY T1 5578': '2026-07-25',
+    'Nan BAY AIA 1960': '2026-07-18', 'Nan UOB Lazada 4920': '2026-07-25',
+    'Nan KTC JCB 4638': '2026-07-25', 'Nan KTC Union Pay 7888': '2026-07-25',
+    'Nan KTC Master Card 8020': '2026-07-25', 'Nan KBANK Line Points 4830': '2026-07-25',
+    'Nan KBANK Shopee 6947': '2026-07-25', 'Boss BAY 1st Choice 1576': '2026-07-15',
+    'Boss BAY JCB 6647': '2026-07-10'
+  };
+  cards.forEach(c => {
+    if (!c.owner) { c.owner = 'me'; cardsMigrated = true; }
+    if (c.cycleStart === undefined && c.closeDay !== undefined) {
+      const today = new Date();
+      const day = today.getDate();
+      const prevClose = day > c.closeDay
+        ? new Date(today.getFullYear(), today.getMonth(), c.closeDay)
+        : new Date(today.getFullYear(), today.getMonth() - 1, c.closeDay);
+      const due = new Date(prevClose); due.setDate(due.getDate() + (c.dueDays || 0));
+      c.cycleStart = toISO(prevClose);
+      c.closeDate = knownCloseDates[c.name] || toISO(prevClose);
+      c.dueDate = toISO(due);
+      c.lastPaidClose = '';
+      delete c.closeDay; delete c.dueDays; delete c.paidUntil; delete c.lastPaidDue;
+      cardsMigrated = true;
+    } else if (c.closeDate === undefined) {
+      c.closeDate = knownCloseDates[c.name] || c.dueDate;
+      if (c.lastPaidDue !== undefined) { c.lastPaidClose = ''; delete c.lastPaidDue; }
+      cardsMigrated = true;
+    }
+  });
+  if (cardsMigrated) await saveCards();
+  try { const r = await window.storage.get(MEMBERS_KEY, true); members = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultMembers(); } catch (e) { members = defaultMembers(); }
+  try {
+    const r = await window.storage.get(FIXED_KEY, true);
+    if (r && JSON.parse(r.value).length) { fixedExpenses = JSON.parse(r.value); }
+    else { fixedExpenses = defaultFixedExpenses(); await saveFixedExpenses(); }
+  } catch (e) { fixedExpenses = defaultFixedExpenses(); }
+  try { const r = await window.storage.get(WALLET_TX_KEY, true); walletTransactions = r ? JSON.parse(r.value) : []; } catch (e) { walletTransactions = []; walletTxLoadOk = false; }
+  try { const r = await window.storage.get(GOAL_TRANSFERS_KEY, true); goalTransfers = r ? JSON.parse(r.value) : []; } catch (e) { goalTransfers = []; }
+  try { const r = await window.storage.get(WALLETS_KEY, true); wallets = r ? JSON.parse(r.value) : []; } catch (e) { wallets = []; walletsLoadOk = false; }
+  try { const r = await window.storage.get(MAINACCOUNTS_KEY, true); mainAccounts = r ? JSON.parse(r.value) : []; } catch (e) { mainAccounts = []; mainAccountsLoadOk = false; }
+  try { const r = await window.storage.get(MERCHANT_RULES_KEY, true); merchantRules = r ? JSON.parse(r.value) : []; } catch (e) { merchantRules = []; }
+  try { const r = await window.storage.get(DEFAULT_BULK_WALLET_KEY, true); defaultBulkWallet = r ? JSON.parse(r.value) : ''; } catch (e) { defaultBulkWallet = ''; }
+  try { const r = await window.storage.get(CATEGORIES_KEY, true); categories = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultCategories(); } catch (e) { categories = defaultCategories(); }
+  refreshCatMap(); refreshCategorySelects();
+  refreshMemberMap(); refreshMemberSelects();
+
+  function looksLikeGeneratedId(s) { return /^[a-z0-9]{9,18}$/.test(s || ''); }
+
+  // Clean up phantom wallets/accounts already created by a past bug (orphaned IDs mistaken for names)
+  // Only touch storage if every relevant data type actually loaded successfully this time —
+  // never write back over data we failed to read (that would erase real data with an empty default).
+  const safeToMutateWallets = entriesLoadOk && goalsLoadOk && walletsLoadOk && walletTxLoadOk;
+  const safeToMutateAccounts = goalsLoadOk && walletsLoadOk && mainAccountsLoadOk;
+
+  // Safety net: remove any duplicate-by-id entries that may have snuck into these lists
+  // (e.g. from a reorder edge case), keeping the first occurrence of each id.
+  function dedupById(list) {
+    const seen = new Set();
+    return list.filter(item => { if (seen.has(item.id)) return false; seen.add(item.id); return true; });
+  }
+  if (walletsLoadOk) { const deduped = dedupById(wallets); if (deduped.length !== wallets.length) { wallets = deduped; await saveWallets(); } }
+  if (goalsLoadOk) { const deduped = dedupById(goals); if (deduped.length !== goals.length) { goals = deduped; await saveGoals(); } }
+  if (mainAccountsLoadOk) { const deduped = dedupById(mainAccounts); if (deduped.length !== mainAccounts.length) { mainAccounts = deduped; await saveMainAccounts(); } }
+
+  // One-time fix: entries tied to a goal (category saving/debt) used to have their .account field set to
+  // whichever wallet funded that month's payment. walletBalance() no longer reads that field for goal-tied
+  // entries (to stop double-counting against the goal's own linked wallet), so any entry that was funded from
+  // a DIFFERENT wallet than the goal's own needs its historical deduction preserved as a real walletTransaction
+  // instead, or that wallet's balance would look inflated by exactly the amount that used to be subtracted.
+  if (safeToMutateWallets) {
+    let migratedLegacyGoalAccounts = false;
+    entries.forEach(e => {
+      if (!e.account || !e.goal || (e.category !== 'saving' && e.category !== 'debt')) return;
+      const g = goals.find(gg => gg.id === e.goal);
+      if (e.account !== (g ? g.account : null)) {
+        walletTransactions.push({
+          id: genId(), date: e.date, account: e.account, amount: -e.amount,
+          note: (e.note || 'ย้ายเงินตามแผนรายเดือน') + ' (ย้อนหลัง)'
+        });
+      }
+      e.account = '';
+      migratedLegacyGoalAccounts = true;
+    });
+    if (migratedLegacyGoalAccounts) {
+      await saveEntries(); await saveWalletTransactions();
+    }
+  }
+  const phantomWallets = safeToMutateWallets ? wallets.filter(w => looksLikeGeneratedId(w.name)) : [];
+  if (phantomWallets.length) {
+    const phantomIds = new Set(phantomWallets.map(w => w.id));
+    wallets = wallets.filter(w => !phantomIds.has(w.id));
+    entries.forEach(e => { if (phantomIds.has(e.account)) e.account = ''; });
+    goals.forEach(g => { if (phantomIds.has(g.account)) g.account = ''; });
+    walletTransactions.forEach(t => { if (phantomIds.has(t.account)) t.account = ''; });
+    await saveWallets(); await saveEntries(); await saveGoals(); await saveWalletTransactions();
+  }
+  const phantomAccounts = safeToMutateAccounts ? mainAccounts.filter(a => looksLikeGeneratedId(a.name)) : [];
+  if (phantomAccounts.length) {
+    const phantomAccIds = new Set(phantomAccounts.map(a => a.id));
+    mainAccounts = mainAccounts.filter(a => !phantomAccIds.has(a.id));
+    goals.forEach(g => { if (phantomAccIds.has(g.mainAccount)) g.mainAccount = ''; });
+    wallets.forEach(w => { if (phantomAccIds.has(w.mainAccount)) w.mainAccount = ''; });
+    await saveMainAccounts(); await saveGoals(); await saveWallets();
+  }
+
+  // Migrate legacy free-text wallet names (from entries/goals/walletTransactions) into proper Wallet master records.
+  // Orphaned references that look like a leftover generated ID (e.g. from a deleted wallet) are cleared instead of
+  // being turned into a new phantom wallet.
+  const legacyStrings = new Set();
+  const isKnownId = (v) => wallets.some(w => w.id === v);
+  let clearedWalletOrphans = false;
+  if (safeToMutateWallets) {
+    entries.forEach(e => { if (e.account && !isKnownId(e.account)) { if (looksLikeGeneratedId(e.account)) { e.account = ''; clearedWalletOrphans = true; } else legacyStrings.add(e.account); } });
+    goals.forEach(g => { if (g.account && !isKnownId(g.account)) { if (looksLikeGeneratedId(g.account)) { g.account = ''; clearedWalletOrphans = true; } else legacyStrings.add(g.account); } });
+    walletTransactions.forEach(t => { if (t.account && !isKnownId(t.account)) { if (looksLikeGeneratedId(t.account)) { t.account = ''; clearedWalletOrphans = true; } else legacyStrings.add(t.account); } });
+  }
+  let migratedWallets = false;
+  const nameToId = {};
+  legacyStrings.forEach(name => {
+    let w = wallets.find(x => x.name === name);
+    if (!w) {
+      w = { id: genId(), name, initial: 0, owner: 'shared', type: 'spending', mainAccount: '' };
+      wallets.push(w);
+      migratedWallets = true;
+    }
+    nameToId[name] = w.id;
+  });
+  if (migratedWallets || legacyStrings.size) {
+    entries.forEach(e => { if (e.account && nameToId[e.account]) e.account = nameToId[e.account]; });
+    goals.forEach(g => { if (g.account && nameToId[g.account]) g.account = nameToId[g.account]; });
+    walletTransactions.forEach(t => { if (t.account && nameToId[t.account]) t.account = nameToId[t.account]; });
+  }
+  if (safeToMutateWallets && (migratedWallets || legacyStrings.size || clearedWalletOrphans)) {
+    await saveWallets(); await saveEntries(); await saveGoals(); await saveWalletTransactions();
+  }
+
+  // Migrate legacy free-text "บัญชี" (mainAccount) names on goals/wallets into proper Account master records
+  const isKnownAccId = (v) => mainAccounts.some(a => a.id === v);
+  const legacyAccStrings = new Set();
+  let clearedAccountOrphans = false;
+  if (safeToMutateAccounts) {
+    goals.forEach(g => { if (g.mainAccount && !isKnownAccId(g.mainAccount)) { if (looksLikeGeneratedId(g.mainAccount)) { g.mainAccount = ''; clearedAccountOrphans = true; } else legacyAccStrings.add(g.mainAccount); } });
+    wallets.forEach(w => { if (w.mainAccount && !isKnownAccId(w.mainAccount)) { if (looksLikeGeneratedId(w.mainAccount)) { w.mainAccount = ''; clearedAccountOrphans = true; } else legacyAccStrings.add(w.mainAccount); } });
+  }
+  let migratedAccounts = false;
+  const accNameToId = {};
+  legacyAccStrings.forEach(name => {
+    let a = mainAccounts.find(x => x.name === name);
+    if (!a) {
+      a = { id: genId(), name, owner: 'shared' };
+      mainAccounts.push(a);
+      migratedAccounts = true;
+    }
+    accNameToId[name] = a.id;
+  });
+  if (migratedAccounts || legacyAccStrings.size) {
+    goals.forEach(g => { if (g.mainAccount && accNameToId[g.mainAccount]) g.mainAccount = accNameToId[g.mainAccount]; });
+    wallets.forEach(w => { if (w.mainAccount && accNameToId[w.mainAccount]) w.mainAccount = accNameToId[w.mainAccount]; });
+  }
+  if (safeToMutateAccounts && (migratedAccounts || legacyAccStrings.size || clearedAccountOrphans)) {
+    await saveMainAccounts(); await saveGoals(); await saveWallets();
+  }
+
+  refreshGoalSelect(); refreshPaymentSelect(); refreshWalletSelects(); refreshMainAccountSelects(); refreshAccountList(); refreshBillImportSelects(); render();
+}
+
+['tab-all', 'tab-income', 'tab-expense'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    ledgerFilter = id === 'tab-all' ? 'all' : id === 'tab-income' ? 'income' : 'expense';
+    ledgerShowCount = 50;
+    renderLedger();
+  });
+});
+
+document.getElementById('bulk-log-open').addEventListener('click', () => {
+  bulkLogOpen = true; renderBulkLogForm();
+});
+
+document.getElementById('default-bulk-wallet').addEventListener('change', async (e) => {
+  defaultBulkWallet = e.target.value;
+  await saveDefaultBulkWallet();
+});
+
+document.getElementById('ledger-search').addEventListener('input', (e) => {
+  ledgerSearch = e.target.value;
+  ledgerShowCount = 50;
+  renderLedger();
+});
+
+document.getElementById('ledger-search-from').addEventListener('change', (e) => {
+  ledgerSearchFrom = e.target.value;
+  ledgerShowCount = 50;
+  renderLedger();
+});
+document.getElementById('ledger-search-to').addEventListener('change', (e) => {
+  ledgerSearchTo = e.target.value;
+  ledgerShowCount = 50;
+  renderLedger();
+});
+
+document.getElementById('m-add').addEventListener('click', async () => {
+  const input = document.getElementById('m-name');
+  const name = input.value.trim();
+  if (!name) return;
+  const color = memberColors[members.length % memberColors.length];
+  members.push({ key: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), label: name, color });
+  input.value = '';
+  refreshMemberMap();
+  await saveMembers(); refreshMemberSelects(); render();
+});
+
+document.getElementById('w-add').addEventListener('click', async () => {
+  const name = document.getElementById('w-name').value.trim();
+  if (!name) return;
+  const initial = parseFloat(document.getElementById('w-initial').value) || 0;
+  const owner = wOwnerSelect.value;
+  const type = document.getElementById('w-type').value;
+  const mainAccount = document.getElementById('w-mainaccount').value.trim();
+  const locked = document.getElementById('w-locked').value;
+  wallets.push({ id: genId(), name, initial, owner, type, mainAccount, locked });
+  document.getElementById('w-name').value = ''; document.getElementById('w-initial').value = ''; document.getElementById('w-mainaccount').value = ''; document.getElementById('w-locked').value = '';
+  await saveWallets(); refreshWalletSelects(); refreshAccountList(); render();
+});
+
+document.getElementById('ma-add').addEventListener('click', async () => {
+  const name = document.getElementById('ma-name').value.trim();
+  if (!name) return;
+  const owner = maOwnerSelect.value;
+  mainAccounts.push({ id: genId(), name, owner });
+  document.getElementById('ma-name').value = '';
+  await saveMainAccounts(); refreshMainAccountSelects(); render();
+});
+
+document.getElementById('cat-add').addEventListener('click', async () => {
+  const input = document.getElementById('cat-name');
+  const name = input.value.trim();
+  const kind = document.getElementById('cat-kind').value;
+  if (!name) return;
+  const color = categoryColors[categories.length % categoryColors.length];
+  categories.push({ key: 'cat' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), label: name, kind, color });
+  input.value = '';
+  refreshCatMap();
+  await saveCategories(); refreshCategorySelects(); render();
+});
+
+document.getElementById('mr-add').addEventListener('click', async () => {
+  const keyword = document.getElementById('mr-keyword').value.trim();
+  if (!keyword) return;
+  const category = mrCategorySelect.value;
+  const member = mrMemberSelect.value;
+  merchantRules.push({ id: genId(), keyword, category, member });
+  document.getElementById('mr-keyword').value = '';
+  await saveMerchantRules(); render();
+});
+
+document.getElementById('c-add').addEventListener('click', async () => {
+  const name = document.getElementById('c-name').value.trim();
+  const owner = cOwnerSelect.value;
+  const cycleStart = document.getElementById('c-cyclestart').value;
+  const closeDate = document.getElementById('c-closedate').value;
+  const dueDate = document.getElementById('c-duedate').value;
+  if (!name || !cycleStart || !closeDate || !dueDate) return;
+  cards.push({ id: genId(), name, owner, cycleStart, closeDate, dueDate, lastPaidClose: '' });
+  document.getElementById('c-name').value = ''; document.getElementById('c-cyclestart').value = ''; document.getElementById('c-closedate').value = ''; document.getElementById('c-duedate').value = '';
+  await saveCards(); refreshPaymentSelect(); render();
+});
+
+document.getElementById('x-add').addEventListener('click', async () => {
+  const name = document.getElementById('x-name').value.trim();
+  const amount = parseFloat(document.getElementById('x-amount').value);
+  if (!name || !amount || amount <= 0) return;
+  fixedExpenses.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name, amount,
+    frequency: document.getElementById('x-freq').value,
+    category: xCategorySelect.value,
+    member: xMemberSelect.value,
+    dueDate: document.getElementById('x-due').value || '',
+    history: []
+  });
+  document.getElementById('x-name').value = ''; document.getElementById('x-amount').value = ''; document.getElementById('x-due').value = '';
+  await saveFixedExpenses(); renderFixedExpenses();
+});
+
+document.getElementById('g-add').addEventListener('click', async () => {
+  const kind = document.getElementById('g-kind').value;
+  const name = document.getElementById('g-name').value.trim();
+  const targetRaw = parseFloat(document.getElementById('g-target').value);
+  const target = isNaN(targetRaw) || targetRaw <= 0 ? null : targetRaw;
+  const dueDate = document.getElementById('g-due').value;
+  const initial = parseFloat(document.getElementById('g-initial').value) || 0;
+  const monthlyRaw = parseFloat(document.getElementById('g-monthly').value);
+  const monthly = isNaN(monthlyRaw) || monthlyRaw <= 0 ? null : monthlyRaw;
+  const account = document.getElementById('g-account').value.trim();
+  const member = document.getElementById('g-member').value;
+  const mainAccount = document.getElementById('g-mainaccount').value.trim();
+  const withdrawable = document.getElementById('g-withdrawable').value;
+  if (!name) return;
+  goals.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), kind, name, target, dueDate: dueDate || '', initial, monthly, account, member, mainAccount, withdrawable, history: [] });
+  document.getElementById('g-name').value = ''; document.getElementById('g-target').value = ''; document.getElementById('g-due').value = '';
+  document.getElementById('g-initial').value = ''; document.getElementById('g-monthly').value = ''; document.getElementById('g-account').value = ''; document.getElementById('g-member').value = 'shared';
+  document.getElementById('g-mainaccount').value = ''; document.getElementById('g-withdrawable').value = '';
+  await saveGoals(); refreshGoalSelect(); refreshAccountList(); render();
+});
+
+document.getElementById('f-add').addEventListener('click', async () => {
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const errEl = document.getElementById('f-error');
+  if (!amount || amount <= 0) { errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+  let selectedMembers = getSelectedMembers();
+  if (selectedMembers.length === 0) selectedMembers = ['shared'];
+  const date = document.getElementById('f-date').value || toISO(new Date());
+  const category = catSelect.value;
+  const goal = (category === 'saving' || category === 'debt') ? document.getElementById('f-goal').value : '';
+  const payment = document.getElementById('f-payment').value;
+  const account = document.getElementById('f-account').value.trim();
+  const note = document.getElementById('f-note').value.trim();
+  const n = selectedMembers.length;
+  const totalCents = Math.round(amount * 100);
+  const baseCents = Math.floor(totalCents / n);
+  const remainderCents = totalCents - baseCents * n;
+  selectedMembers.forEach((memberKey, i) => {
+    const cents = baseCents + (i === 0 ? remainderCents : 0);
+    entries.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + i,
+      date, category, goal,
+      member: memberKey,
+      payment, account,
+      amount: cents / 100,
+      note: note + (n > 1 ? ` (หารกับ ${n} คน)` : '')
+    });
+  });
+  document.getElementById('f-amount').value = ''; document.getElementById('f-note').value = ''; document.getElementById('f-account').value = '';
+  await saveEntries(); refreshAccountList(); render();
+});
+
+document.querySelectorAll('.page-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.page-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  });
+});
+
+let billImportResults = [];
+
+document.getElementById('bi-analyze').addEventListener('click', async () => {
+  const fileInput = document.getElementById('bi-file');
+  const statusEl = document.getElementById('bi-status');
+  const file = fileInput.files[0];
+  if (!file) { statusEl.textContent = 'กรุณาเลือกไฟล์ก่อน'; return; }
+  const cardId = document.getElementById('bi-card').value;
+  if (!cardId) { statusEl.textContent = 'กรุณาเพิ่มบัตรเครดิตก่อน'; return; }
+  statusEl.textContent = 'กำลังอ่านไฟล์...';
+  document.getElementById('bi-results').innerHTML = '';
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const isPdf = file.type === 'application/pdf';
+    const mediaBlock = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
+      : { type: 'image', source: { type: 'base64', media_type: file.type || 'image/jpeg', data: base64 } };
+
+    statusEl.textContent = 'กำลังวิเคราะห์บิลด้วย AI...';
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            mediaBlock,
+            { type: 'text', text: 'นี่คือใบแจ้งยอดบัตรเครดิต ดึงเฉพาะรายการซื้อ/รายการใช้จ่ายแต่ละรายการ (ไม่รวมหัวข้อ, ยอดยกมา, ยอดรวมย่อย, ยอดชำระเงิน/เครดิต) ตอบกลับเป็น JSON array เท่านั้น ไม่มีข้อความอื่นใดๆ รูปแบบแต่ละรายการ: {"date":"YYYY-MM-DD","merchant":"ชื่อร้านตามที่เห็น","amount":ตัวเลข} ใช้ปี ค.ศ. เต็ม (เช่น 26 ให้แปลงเป็น 2026)' }
+          ]
+        }]
+      })
+    });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || 'API error');
+    const textBlock = data.content.find(c => c.type === 'text');
+    if (!textBlock) throw new Error('ไม่พบผลลัพธ์จาก AI');
+    const jsonText = textBlock.text.trim().replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+    const items = JSON.parse(jsonText);
+    if (!Array.isArray(items) || items.length === 0) { statusEl.textContent = 'ไม่พบรายการในบิลนี้'; return; }
+
+    billImportResults = items.map(it => {
+      const rule = matchMerchantRule(it.merchant);
+      return {
+        id: genId(),
+        date: it.date || toISO(new Date()),
+        merchant: it.merchant || '',
+        amount: parseFloat(it.amount) || 0,
+        category: rule ? rule.category : 'other',
+        member: rule ? rule.member : 'shared',
+        include: true
+      };
+    });
+    statusEl.textContent = `พบ ${billImportResults.length} รายการ ตรวจสอบและแก้ไขก่อนบันทึกได้เลย (ถ้าบิลมีหลายหน้า/รายการเยอะ อาจตัดไม่ครบ ลองเช็คด้วยตาอีกที)`;
+    renderBillImportResults();
+  } catch (err) {
+    statusEl.textContent = 'เกิดข้อผิดพลาด: ' + err.message;
+  }
+});
+
+function renderBillImportResults() {
+  const wrap = document.getElementById('bi-results');
+  wrap.innerHTML = '';
+  if (billImportResults.length === 0) return;
+  const catOptionsStr = categories.filter(c => c.kind === 'expense').map(c => `<option value="${c.key}">${c.label}</option>`).join('');
+  const memberOptionsStr = members.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+
+  billImportResults.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:8px;">
+        <input type="checkbox" class="bi-include" data-key="${item.id}" ${item.include ? 'checked' : ''} style="margin-top:10px;">
+        <div style="flex:1;">
+          <div class="form-grid g2">
+            <input type="text" class="bi-merchant" data-key="${item.id}" value="${item.merchant}" placeholder="ชื่อร้าน">
+            <input type="number" class="bi-amount" data-key="${item.id}" value="${item.amount}" min="0" step="0.01">
+          </div>
+          <div class="form-grid g2">
+            <input type="date" class="bi-date" data-key="${item.id}" value="${item.date}">
+            <select class="bi-category" data-key="${item.id}">${catOptionsStr}</select>
+          </div>
+          <select class="bi-member" data-key="${item.id}" style="margin-top:8px;">${memberOptionsStr}</select>
+        </div>
+      </div>`;
+    wrap.appendChild(div);
+    div.querySelector('.bi-category').value = item.category;
+    div.querySelector('.bi-member').value = item.member;
+  });
+
+  const actionsDiv = document.createElement('div');
+  actionsDiv.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;margin-top:8px;';
+  actionsDiv.innerHTML = `<button class="btn" id="bi-cancel">ยกเลิกทั้งหมด</button><button class="btn btn-primary" id="bi-confirm">ยืนยันบันทึกทั้งหมด</button>`;
+  wrap.appendChild(actionsDiv);
+
+  wrap.querySelectorAll('.bi-include').forEach(cb => cb.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === cb.dataset.key); if (item) item.include = cb.checked;
+  }));
+  wrap.querySelectorAll('.bi-merchant').forEach(inp => inp.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === inp.dataset.key); if (item) item.merchant = inp.value;
+  }));
+  wrap.querySelectorAll('.bi-amount').forEach(inp => inp.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === inp.dataset.key); if (item) item.amount = parseFloat(inp.value) || 0;
+  }));
+  wrap.querySelectorAll('.bi-date').forEach(inp => inp.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === inp.dataset.key); if (item) item.date = inp.value;
+  }));
+  wrap.querySelectorAll('.bi-category').forEach(sel => sel.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === sel.dataset.key); if (item) item.category = sel.value;
+  }));
+  wrap.querySelectorAll('.bi-member').forEach(sel => sel.addEventListener('change', () => {
+    const item = billImportResults.find(x => x.id === sel.dataset.key); if (item) item.member = sel.value;
+  }));
+
+  document.getElementById('bi-cancel').addEventListener('click', () => {
+    billImportResults = [];
+    document.getElementById('bi-results').innerHTML = '';
+    document.getElementById('bi-status').textContent = '';
+    document.getElementById('bi-file').value = '';
+  });
+  document.getElementById('bi-confirm').addEventListener('click', async () => {
+    const cardId = document.getElementById('bi-card').value;
+    const walletId = document.getElementById('bi-wallet').value;
+    let count = 0;
+    billImportResults.filter(it => it.include).forEach(it => {
+      entries.push({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + count,
+        date: it.date, category: it.category, goal: '',
+        member: it.member, payment: cardId, account: walletId,
+        amount: it.amount, note: it.merchant + ' (นำเข้าจากบิล)'
+      });
+      count++;
+    });
+    billImportResults = [];
+    document.getElementById('bi-results').innerHTML = '';
+    document.getElementById('bi-status').textContent = `บันทึก ${count} รายการเรียบร้อย`;
+    document.getElementById('bi-file').value = '';
+    await saveEntries(); refreshAccountList(); render();
+  });
+}
+
+document.getElementById('export-data').addEventListener('click', () => {
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    entries, goals, cards, fixedExpenses, walletTransactions, goalTransfers,
+    wallets, mainAccounts, merchantRules, members, categories
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'household-budget-backup-' + toISO(new Date()) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  document.getElementById('backup-status').textContent = 'ดาวน์โหลดไฟล์สำรองข้อมูลแล้ว';
+});
+
+let pendingImportData = null;
+document.getElementById('import-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  const statusEl = document.getElementById('backup-status');
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    pendingImportData = data;
+    const counts = [
+      ['รายการ', (data.entries || []).length],
+      ['เป้าหมาย', (data.goals || []).length],
+      ['บัตร', (data.cards || []).length],
+      ['รายจ่ายประจำ', (data.fixedExpenses || []).length],
+      ['กระเป๋าเงิน', (data.wallets || []).length],
+      ['บัญชี', (data.mainAccounts || []).length]
+    ];
+    statusEl.textContent = 'ไฟล์นี้มี: ' + counts.map(c => c[0] + ' ' + c[1] + ' รายการ').join(', ');
+    document.getElementById('import-confirm').style.display = 'block';
+  } catch (err) {
+    statusEl.textContent = 'เกิดข้อผิดพลาด: ไฟล์ไม่ถูกต้อง (' + err.message + ')';
+    pendingImportData = null;
+  }
+});
+document.getElementById('import-cancel').addEventListener('click', () => {
+  pendingImportData = null;
+  document.getElementById('import-confirm').style.display = 'none';
+  document.getElementById('import-file').value = '';
+  document.getElementById('backup-status').textContent = '';
+});
+document.getElementById('import-confirm-btn').addEventListener('click', async () => {
+  if (!pendingImportData) return;
+  const data = pendingImportData;
+  entries = data.entries || [];
+  goals = data.goals || [];
+  cards = data.cards || [];
+  fixedExpenses = data.fixedExpenses || [];
+  walletTransactions = data.walletTransactions || [];
+  goalTransfers = data.goalTransfers || [];
+  wallets = data.wallets || [];
+  mainAccounts = data.mainAccounts || [];
+  merchantRules = data.merchantRules || [];
+  members = (data.members && data.members.length) ? data.members : defaultMembers();
+  categories = (data.categories && data.categories.length) ? data.categories : defaultCategories();
+  refreshCatMap(); refreshMemberMap();
+  await saveEntries(); await saveGoals(); await saveCards(); await saveFixedExpenses();
+  await saveWalletTransactions(); await saveGoalTransfers(); await saveWallets(); await saveMainAccounts();
+  await saveMerchantRules(); await saveMembers(); await saveCategories();
+  refreshCategorySelects(); refreshMemberSelects(); refreshGoalSelect(); refreshPaymentSelect();
+  refreshWalletSelects(); refreshMainAccountSelects(); refreshAccountList(); refreshBillImportSelects();
+  pendingImportData = null;
+  document.getElementById('import-confirm').style.display = 'none';
+  document.getElementById('import-file').value = '';
+  document.getElementById('backup-status').textContent = 'นำเข้าข้อมูลสำเร็จเรียบร้อยแล้ว';
+  render();
+});
+
+function csvEscape(v) {
+  const s = String(v == null ? '' : v);
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+document.getElementById('ex-export').addEventListener('click', () => {
+  const from = document.getElementById('ex-from').value;
+  const to = document.getElementById('ex-to').value;
+  const cardFilter = document.getElementById('ex-card').value;
+  const statusEl = document.getElementById('ex-status');
+  let list = [...entries];
+  if (from) list = list.filter(e => e.date >= from);
+  if (to) list = list.filter(e => e.date <= to);
+  if (cardFilter) list = list.filter(e => (e.payment || 'cash') === cardFilter);
+  if (list.length === 0) { statusEl.textContent = 'ไม่พบรายการตามเงื่อนไขที่เลือก'; return; }
+  list.sort((a, b) => a.date.localeCompare(b.date));
+  const rows = [['วันที่', 'หมวดหมู่', 'ประเภท', 'รายละเอียด', 'คน', 'ช่องทางจ่าย', 'กระเป๋าเงิน', 'จำนวนเงิน']];
+  list.forEach(e => {
+    const cat = getCat(e.category);
+    rows.push([
+      e.date, cat.label, cat.kind === 'income' ? 'รายรับ' : 'รายจ่าย',
+      e.note || '', memberLabel(e.member), paymentLabel(e.payment),
+      walletLabel(e.account), e.amount.toFixed(2)
+    ]);
+  });
+  const csvContent = '\uFEFF' + rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const rangeLabel = (from || 'all') + '_to_' + (to || 'all');
+  const now = new Date();
+  const exportTimestamp = toISO(now) + '_' + String(now.getHours()).padStart(2, '0') + String(now.getMinutes()).padStart(2, '0');
+  a.download = 'transactions-' + rangeLabel + '-exported-' + exportTimestamp + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  statusEl.textContent = `Export แล้ว ${list.length} รายการ`;
+});
+
+document.getElementById('expense-view-month').addEventListener('click', () => {
+  document.getElementById('expense-view-month').classList.add('active');
+  document.getElementById('expense-view-cycle').classList.remove('active');
+  document.getElementById('expense-view-month-wrap').style.display = '';
+  document.getElementById('expense-view-cycle-wrap').style.display = 'none';
+});
+document.getElementById('expense-view-cycle').addEventListener('click', () => {
+  document.getElementById('expense-view-cycle').classList.add('active');
+  document.getElementById('expense-view-month').classList.remove('active');
+  document.getElementById('expense-view-month-wrap').style.display = 'none';
+  document.getElementById('expense-view-cycle-wrap').style.display = '';
+  if (cycleCatChart) cycleCatChart.resize();
+  if (cycleMemberChart) cycleMemberChart.resize();
+});
+
+document.getElementById('month-prev').addEventListener('click', () => {
+  currentViewMonth = shiftMonth(currentViewMonth, -1);
+  render();
+});
+document.getElementById('month-next').addEventListener('click', () => {
+  currentViewMonth = shiftMonth(currentViewMonth, 1);
+  render();
+});
+
+document.getElementById('restore-history-btn').addEventListener('click', () => {
+  const wrap = document.getElementById('restore-history-form');
+  const statusEl = document.getElementById('restore-history-status');
+  statusEl.textContent = '';
+  const rows = [];
+  goals.forEach(g => {
+    const kind = g.kind === 'debt' ? 'debt' : 'saving';
+    (g.history || []).forEach((h, idx) => {
+      const noteText = g.name + ' (' + (kind === 'debt' ? 'คืนครบรอบ' : 'จ่ายครบรอบ') + ' - กู้คืนจากประวัติ)';
+      const alreadyRestored = entries.some(e => e.note === noteText && e.date === h.date && e.amount === h.amount);
+      rows.push({ key: g.id + ':' + idx, goalId: g.id, goalName: g.name, kind, date: h.date, amount: h.amount, noteText, alreadyRestored });
+    });
+  });
+  if (rows.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการรีเซ็ตเลย</p>'; return; }
+  rows.sort((a, b) => b.date.localeCompare(a.date));
+  const rowsHtml = rows.map(r => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer;">
+      <input type="checkbox" class="restore-include" data-key="${r.key}" ${r.alreadyRestored ? '' : 'checked'}>
+      <span style="flex:1;font-size:13px;">${r.goalName} · ${fmtDateStr(r.date)} · ${fmt(r.amount)}${r.alreadyRestored ? ' <span class="muted">(เคยกู้คืนแล้ว)</span>' : ''}</span>
+    </label>`).join('');
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.innerHTML = `<div style="display:flex;gap:8px;margin:8px 0;">
+      <button class="btn" id="restore-select-all">เลือกทั้งหมด</button>
+      <button class="btn" id="restore-select-none">ยกเลิกทั้งหมด</button>
+    </div>
+    ${rowsHtml}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+      <button class="btn" id="restore-history-cancel">ยกเลิก</button>
+      <button class="btn btn-primary" id="restore-history-confirm">ยืนยันกู้คืนที่เลือก</button>
+    </div>`;
+  wrap.innerHTML = '';
+  wrap.appendChild(div);
+  div.querySelector('#restore-select-all').addEventListener('click', () => {
+    div.querySelectorAll('.restore-include').forEach(cb => cb.checked = true);
+  });
+  div.querySelector('#restore-select-none').addEventListener('click', () => {
+    div.querySelectorAll('.restore-include').forEach(cb => cb.checked = false);
+  });
+  div.querySelector('#restore-history-cancel').addEventListener('click', () => {
+    wrap.innerHTML = '';
+  });
+  div.querySelector('#restore-history-confirm').addEventListener('click', async () => {
+    let created = 0;
+    rows.forEach(r => {
+      const cb = div.querySelector(`.restore-include[data-key="${r.key}"]`);
+      if (!cb.checked) return;
+      entries.push({
+        id: genId(), date: r.date, category: r.kind, goal: '',
+        member: goals.find(g => g.id === r.goalId)?.member || 'shared',
+        payment: 'cash', account: '', amount: r.amount, note: r.noteText
+      });
+      created++;
+    });
+    if (created > 0) { await saveEntries(); render(); }
+    wrap.innerHTML = '';
+    statusEl.textContent = `กู้คืนแล้ว ${created} รายการ`;
+  });
+});
+
+(function initHouseholdIdUi() {
+  const disp = document.getElementById('household-id-display');
+  const note = document.getElementById('household-id-note');
+  if (disp) disp.textContent = window.HOUSEHOLD_ID;
+  if (note) {
+    note.addEventListener('click', () => {
+      const next = window.prompt(
+        'รหัสครัวเรือนปัจจุบัน: ' + window.HOUSEHOLD_ID + '\n\n' +
+        'ให้สามีใส่รหัสเดียวกันนี้ในอุปกรณ์ของเขา เพื่อเห็นข้อมูลชุดเดียวกัน\n\n' +
+        'ต้องการเปลี่ยนรหัส ให้พิมพ์รหัสใหม่แล้วกดตกลง (หน้าจอนี้จะโหลดใหม่) หรือกดยกเลิกเพื่อคงรหัสเดิม:',
+        window.HOUSEHOLD_ID
+      );
+      if (next && next.trim() && next.trim() !== window.HOUSEHOLD_ID) {
+        window.setHouseholdId(next);
+        location.reload();
+      }
+    });
+  }
+})();
+
+load();
+</script>
+</body>
+</html>
