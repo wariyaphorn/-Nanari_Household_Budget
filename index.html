@@ -568,7 +568,7 @@
         <button class="tab" id="tab-income">รายรับ</button>
         <button class="tab" id="tab-expense">รายจ่าย</button>
       </div>
-      <input type="text" id="ledger-search" placeholder="ค้นหา เช่น ชื่อร้าน, หมวดหมู่, คน, กระเป๋าเงิน">
+      <input type="text" id="ledger-search" placeholder="ค้นหา พิมพ์หลายคำพร้อมกันได้ เช่น Buffer อาหาร">
       <div class="form-grid g2">
         <div>
           <p class="muted" style="margin:0 0 4px;">ตั้งแต่วันที่</p>
@@ -2408,10 +2408,10 @@ function renderLedger() {
   if (ledgerSearchFrom) list = list.filter(e => e.date >= ledgerSearchFrom);
   if (ledgerSearchTo) list = list.filter(e => e.date <= ledgerSearchTo);
   if (ledgerSearch.trim()) {
-    const q = ledgerSearch.trim().toLowerCase();
+    const words = ledgerSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
     list = list.filter(e => {
       const haystack = [e.note, getCat(e.category).label, memberLabel(e.member), paymentLabel(e.payment), walletLabel(e.account), e.date].join(' ').toLowerCase();
-      return haystack.includes(q);
+      return words.every(w => haystack.includes(w));
     });
   }
   list.sort((a, b) => (b.date + b.id).localeCompare(a.date + a.id));
