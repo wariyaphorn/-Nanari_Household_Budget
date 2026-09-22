@@ -180,7 +180,8 @@
 
   <nav class="page-tabs">
     <button class="page-tab active" data-page="overview">ภาพรวม</button>
-    <button class="page-tab" data-page="cards">บัตร/รายจ่ายประจำ</button>
+    <button class="page-tab" data-page="cards">บัตรเครดิต</button>
+    <button class="page-tab" data-page="fixed">รายจ่ายประจำ</button>
     <button class="page-tab" data-page="savings">เป้าหมาย</button>
     <button class="page-tab" data-page="wallets">กระเป๋า/บัญชี</button>
     <button class="page-tab" data-page="settings">ตั้งค่า</button>
@@ -270,13 +271,6 @@
 
   <section>
     <div class="card">
-      <h2>กำหนดชำระที่ใกล้ถึง</h2>
-      <div id="upcoming"></div>
-    </div>
-  </section>
-
-  <section>
-    <div class="card">
       <h2>เทรนด์รายจ่ายรายหมวดหมู่</h2>
       <p class="muted" style="margin:0 0 10px;">ย้อนหลัง 6 เดือน นับจากเดือนที่กำลังดูอยู่ — ช่วยดูว่าหมวดไหนใช้เพิ่มขึ้นเรื่อยๆ</p>
       <div class="chart-box" style="height:260px;"><canvas id="chart-category-trend"></canvas></div>
@@ -333,6 +327,16 @@
       <button class="btn btn-primary" id="bi-analyze">วิเคราะห์บิล</button>
       <p class="muted" id="bi-status" style="margin-top:8px;"></p>
       <div id="bi-results"></div>
+    </div>
+  </section>
+
+  </div>
+
+  <div id="page-fixed" class="page">
+  <section>
+    <div class="card">
+      <h2>กำหนดชำระที่ใกล้ถึง</h2>
+      <div id="upcoming"></div>
     </div>
   </section>
 
