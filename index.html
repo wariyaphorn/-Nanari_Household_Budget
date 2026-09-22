@@ -175,7 +175,7 @@
       <h1>สมุดบัญชีครัวเรือน</h1>
       <p class="subtitle" id="updated-note">กำลังโหลดข้อมูล...</p>
     </div>
-    <span class="sync-note" id="household-id-note" style="cursor:pointer;" title="คลิกเพื่อดู/เปลี่ยนรหัสครัวเรือน">รหัสครัวเรือน: <span id="household-id-display"></span> (แตะเพื่อเปลี่ยน)</span>
+    <span class="sync-note">รหัสครัวเรือน: <span id="household-id-display">••••••</span> <button id="toggle-household-id-btn" type="button" title="แสดง/ซ่อนรหัส" style="cursor:pointer;background:none;border:none;padding:0 4px;font-size:14px;vertical-align:middle;">👁</button> <span id="household-id-note" style="cursor:pointer;text-decoration:underline;" title="คลิกเพื่อเปลี่ยนรหัสครัวเรือน">(แตะเพื่อเปลี่ยน)</span></span>
   </header>
 
   <nav class="page-tabs">
@@ -3321,7 +3321,17 @@ document.getElementById('restore-history-btn').addEventListener('click', () => {
 (function initHouseholdIdUi() {
   const disp = document.getElementById('household-id-display');
   const note = document.getElementById('household-id-note');
-  if (disp) disp.textContent = window.HOUSEHOLD_ID;
+  const toggleBtn = document.getElementById('toggle-household-id-btn');
+  const MASK = '••••••';
+  let revealed = false;
+  if (disp) disp.textContent = MASK;
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => {
+      revealed = !revealed;
+      if (disp) disp.textContent = revealed ? window.HOUSEHOLD_ID : MASK;
+      toggleBtn.textContent = revealed ? '🙈' : '👁';
+    });
+  }
   if (note) {
     note.addEventListener('click', () => {
       const next = window.prompt(
