@@ -271,6 +271,13 @@
 
   <section>
     <div class="card">
+      <h2>งบประมาณเดือนนี้</h2>
+      <div id="budget-progress"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
       <h2>เทรนด์รายจ่ายรายหมวดหมู่</h2>
       <p class="muted" style="margin:0 0 10px;">ย้อนหลัง 6 เดือน นับจากเดือนที่กำลังดูอยู่ — ช่วยดูว่าหมวดไหนใช้เพิ่มขึ้นเรื่อยๆ</p>
       <div class="chart-box" style="height:260px;"><canvas id="chart-category-trend"></canvas></div>
@@ -451,6 +458,25 @@
       </div>
       <button class="btn btn-primary" id="cat-add">+ เพิ่ม</button>
       <p class="muted" style="margin-top:6px;">แก้ชื่อในช่องแล้วกดออกนอกช่อง (Tab/Enter) เพื่อบันทึก ลบได้ตราบใดที่ยังเหลืออย่างน้อย 1 หมวด</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>ตั้งงบประมาณรายหมวด</h2>
+      <p class="muted" style="margin:0 0 10px;">ตั้งงบต่อเดือนของแต่ละหมวดหมู่ ใช้เทียบกับยอดใช้จริงในหน้า "ภาพรวม" การแก้ไขจะมีผลตั้งแต่เดือนที่เลือกเป็นต้นไป ไม่กระทบเดือนเก่าที่ผ่านไปแล้ว</p>
+      <div id="budget-manager"></div>
+      <div class="form-grid g3">
+        <select id="bg-category"></select>
+        <input type="number" id="bg-amount" placeholder="งบต่อเดือน (บาท)" min="0" step="0.01">
+        <input type="month" id="bg-from">
+      </div>
+      <button class="btn btn-primary" id="bg-add">+ ตั้ง/แก้งบ</button>
+      <p class="muted" style="margin-top:6px;" id="bg-hint"></p>
+      <details style="margin-top:14px;">
+        <summary class="secondary-text" style="cursor:pointer;">ดูประวัติการตั้งงบทั้งหมด</summary>
+        <div id="budget-history" style="margin-top:8px;"></div>
+      </details>
     </div>
   </section>
 
@@ -755,8 +781,10 @@ const WALLETS_KEY = 'household-ledger-wallets';
 const MAINACCOUNTS_KEY = 'household-ledger-mainaccounts';
 const MERCHANT_RULES_KEY = 'household-ledger-merchant-rules';
 const DEFAULT_BULK_WALLET_KEY = 'household-ledger-default-bulk-wallet';
+const BUDGETS_KEY = 'household-ledger-budgets';
 let defaultBulkWallet = '';
 let merchantRules = [];
+let budgets = []; // { id, category, amount, effectiveFrom: 'YYYY-MM' } — a history of budget changes, not just current values
 let entries = [], goals = [], cards = [], fixedExpenses = [], walletTransactions = [], goalTransfers = [], wallets = [], mainAccounts = [];
 let currentViewMonth = toISO(new Date()).slice(0, 7);
 let ledgerFilter = 'all';
@@ -767,16 +795,19 @@ const memberColors = ['#43705F', '#3B7EA6', '#B8901F', '#7A5FA6', '#B14A34', '#5
 const catSelect = document.getElementById('f-category');
 const xCategorySelect = document.getElementById('x-category');
 function refreshCategorySelects() {
-  const prevF = catSelect.value, prevX = xCategorySelect.value;
+  const prevF = catSelect.value, prevX = xCategorySelect.value, prevBg = bgCategorySelect.value;
   catSelect.innerHTML = '';
   xCategorySelect.innerHTML = '';
   mrCategorySelect.innerHTML = '';
+  bgCategorySelect.innerHTML = '';
   categories.forEach(c => catSelect.appendChild(new Option(c.label, c.key)));
-  categories.filter(c => c.kind === 'expense').forEach(c => { xCategorySelect.appendChild(new Option(c.label, c.key)); mrCategorySelect.appendChild(new Option(c.label, c.key)); });
+  categories.filter(c => c.kind === 'expense').forEach(c => { xCategorySelect.appendChild(new Option(c.label, c.key)); mrCategorySelect.appendChild(new Option(c.label, c.key)); bgCategorySelect.appendChild(new Option(c.label, c.key)); });
   if (categories.some(c => c.key === prevF)) catSelect.value = prevF;
   if (categories.some(c => c.key === prevX && c.kind === 'expense')) xCategorySelect.value = prevX;
+  if (categories.some(c => c.key === prevBg && c.kind === 'expense')) bgCategorySelect.value = prevBg;
 }
 const mrCategorySelect = document.getElementById('mr-category');
+const bgCategorySelect = document.getElementById('bg-category');
 const fMemberGroup = document.getElementById('f-member-group');
 const goalMemberSelect = document.getElementById('g-member');
 const xMemberSelect = document.getElementById('x-member');
@@ -1556,6 +1587,79 @@ function renderMerchantRulesManager() {
       merchantRules = merchantRules.filter(r => r.id !== btn.dataset.delMr);
       await saveMerchantRules(); render();
     });
+  });
+}
+
+// Returns the budget amount in effect for a category during a given 'YYYY-MM' month —
+// the most recent budget entry whose effectiveFrom is on or before that month, or null
+// if no budget has ever been set for that category by that month.
+function budgetForCategoryAtMonth(catKey, ym) {
+  const applicable = budgets.filter(b => b.category === catKey && b.effectiveFrom <= ym);
+  if (!applicable.length) return null;
+  applicable.sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
+  return applicable[0].amount;
+}
+
+function renderBudgetManager() {
+  const hint = document.getElementById('bg-hint');
+  const fromInput = document.getElementById('bg-from');
+  if (fromInput && !fromInput.value) fromInput.value = currentViewMonth;
+  if (hint) {
+    const cat = categories.find(c => c.key === bgCategorySelect.value);
+    if (cat) {
+      const current = budgetForCategoryAtMonth(cat.key, currentViewMonth);
+      hint.textContent = current !== null
+        ? `งบปัจจุบันของ "${cat.label}" (เดือน${monthLabel(currentViewMonth)}): ${fmt(current)}`
+        : `"${cat.label}" ยังไม่เคยตั้งงบ`;
+    } else { hint.textContent = ''; }
+  }
+
+  const histWrap = document.getElementById('budget-history');
+  histWrap.innerHTML = '';
+  if (!budgets.length) {
+    histWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการตั้งงบ</p>';
+  } else {
+    [...budgets].sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom)).forEach(b => {
+      const cat = getCat(b.category);
+      const row = document.createElement('div');
+      row.className = 'row-between';
+      row.style.cssText = 'padding:4px 0;font-size:13px;';
+      row.innerHTML = `<span>${cat.label} <span class="muted">· มีผลตั้งแต่ ${monthLabel(b.effectiveFrom)}</span></span>
+        <span style="white-space:nowrap;">${fmt(b.amount)} <button class="del-btn" data-del-budget="${b.id}" aria-label="ลบ" style="margin-left:6px;">✕</button></span>`;
+      histWrap.appendChild(row);
+    });
+    histWrap.querySelectorAll('[data-del-budget]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        budgets = budgets.filter(b => b.id !== btn.dataset.delBudget);
+        await saveBudgets(); render();
+      });
+    });
+  }
+}
+
+function renderBudgetProgress() {
+  const wrap = document.getElementById('budget-progress');
+  wrap.innerHTML = '';
+  const activeCats = categories.filter(c => c.kind === 'expense' && budgetForCategoryAtMonth(c.key, currentViewMonth) !== null);
+  if (!activeCats.length) {
+    wrap.innerHTML = '<p class="empty">ยังไม่ได้ตั้งงบ ไปที่แท็บ "ตั้งค่า" เพื่อตั้งงบรายหมวดได้</p>';
+    return;
+  }
+  activeCats.forEach(c => {
+    const budget = budgetForCategoryAtMonth(c.key, currentViewMonth);
+    const spent = entries.filter(e => e.category === c.key && e.date.slice(0, 7) === currentViewMonth).reduce((s, e) => s + e.amount, 0);
+    const pct = budget > 0 ? (spent / budget * 100) : 0;
+    const barColor = pct >= 100 ? 'var(--rust)' : (pct >= 80 ? '#B8901F' : 'var(--sage)');
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:12px;';
+    row.innerHTML = `<div class="row-between" style="margin-bottom:4px;">
+        <span>${c.label}</span>
+        <span style="font-weight:600;">${fmt(spent)} / ${fmt(budget)} <span class="muted">(${pct.toFixed(0)}%)</span></span>
+      </div>
+      <div style="background:var(--border);border-radius:6px;height:8px;overflow:hidden;">
+        <div style="width:${Math.min(pct, 100)}%;background:${barColor};height:100%;"></div>
+      </div>`;
+    wrap.appendChild(row);
   });
 }
 
@@ -2828,6 +2932,8 @@ function render() {
   renderCharts();
   renderCycleBreakdown();
   renderCategoryTrend();
+  renderBudgetProgress();
+  renderBudgetManager();
   renderLedger();
   renderMembersManager();
   renderCategoryManager();
@@ -2850,6 +2956,7 @@ async function saveMainAccounts() { try { await window.storage.set(MAINACCOUNTS_
 async function saveMerchantRules() { try { await window.storage.set(MERCHANT_RULES_KEY, JSON.stringify(merchantRules), true); } catch (e) { console.error(e); } }
 async function saveDefaultBulkWallet() { try { await window.storage.set(DEFAULT_BULK_WALLET_KEY, JSON.stringify(defaultBulkWallet), true); } catch (e) { console.error(e); } }
 async function saveCategories() { try { await window.storage.set(CATEGORIES_KEY, JSON.stringify(categories), true); } catch (e) { console.error(e); } }
+async function saveBudgets() { try { await window.storage.set(BUDGETS_KEY, JSON.stringify(budgets), true); } catch (e) { console.error(e); } }
 
 async function load() {
   let entriesLoadOk = true, goalsLoadOk = true, walletsLoadOk = true, walletTxLoadOk = true, mainAccountsLoadOk = true;
@@ -2905,6 +3012,7 @@ async function load() {
   try { const r = await window.storage.get(MERCHANT_RULES_KEY, true); merchantRules = r ? JSON.parse(r.value) : []; } catch (e) { merchantRules = []; }
   try { const r = await window.storage.get(DEFAULT_BULK_WALLET_KEY, true); defaultBulkWallet = r ? JSON.parse(r.value) : ''; } catch (e) { defaultBulkWallet = ''; }
   try { const r = await window.storage.get(CATEGORIES_KEY, true); categories = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultCategories(); } catch (e) { categories = defaultCategories(); }
+  try { const r = await window.storage.get(BUDGETS_KEY, true); budgets = r ? JSON.parse(r.value) : []; } catch (e) { budgets = []; }
   refreshCatMap(); refreshCategorySelects();
   refreshMemberMap(); refreshMemberSelects();
 
@@ -3107,6 +3215,23 @@ document.getElementById('cat-add').addEventListener('click', async () => {
   input.value = '';
   refreshCatMap();
   await saveCategories(); refreshCategorySelects(); render();
+});
+
+bgCategorySelect.addEventListener('change', renderBudgetManager);
+
+document.getElementById('bg-add').addEventListener('click', async () => {
+  const category = bgCategorySelect.value;
+  const amountInput = document.getElementById('bg-amount');
+  const amount = parseFloat(amountInput.value);
+  const fromInput = document.getElementById('bg-from');
+  const effectiveFrom = fromInput.value || currentViewMonth;
+  if (!category || !amount || amount <= 0) return;
+  // Replace any existing budget entry for the same category + same effective month
+  // (editing that month's value) instead of piling up duplicates.
+  budgets = budgets.filter(b => !(b.category === category && b.effectiveFrom === effectiveFrom));
+  budgets.push({ id: genId(), category, amount, effectiveFrom });
+  amountInput.value = '';
+  await saveBudgets(); render();
 });
 
 document.getElementById('mr-add').addEventListener('click', async () => {
