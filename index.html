@@ -277,6 +277,17 @@
 
   <section>
     <div class="card">
+      <h2>เทรนด์รายจ่ายรายหมวดหมู่</h2>
+      <p class="muted" style="margin:0 0 10px;">ย้อนหลัง 6 เดือน นับจากเดือนที่กำลังดูอยู่ — ช่วยดูว่าหมวดไหนใช้เพิ่มขึ้นเรื่อยๆ</p>
+      <div class="chart-box" style="height:260px;"><canvas id="chart-category-trend"></canvas></div>
+      <div id="category-trend-table" style="margin-top:14px;"></div>
+      <h2 style="margin-top:24px;">รายการใช้จ่ายสูงสุด 5 อันดับ (เดือนที่กำลังดูอยู่)</h2>
+      <div id="top-expenses-list"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
       <h2>ประวัติรายเดือน (เงินเข้า-ออกจริง)</h2>
       <div id="monthly-history"></div>
     </div>
@@ -2515,6 +2526,126 @@ function renderCharts() {
   renderMemberCategoryBreakdown('month', memberList, memberCatTotals, catMeta);
 }
 
+// Same expense/category grouping rules as renderCharts(), but for an arbitrary month —
+// used to build the multi-month trend chart and month-over-month comparison.
+function computeCategoryTotalsForMonth(ym) {
+  const catTotals = {}, catMeta = {};
+  const goalTypeMeta = {
+    saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+    periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+    debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+  };
+  entries.filter(e => getCat(e.category).kind === 'expense' && e.date.slice(0, 7) === ym).forEach(e => {
+    let key;
+    if (e.goal) {
+      const g = goals.find(gg => gg.id === e.goal);
+      const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+      key = 'goal_' + gk;
+      catMeta[key] = goalTypeMeta[gk];
+    } else {
+      key = e.category;
+      const c = getCat(e.category);
+      catMeta[key] = { label: c.label, color: c.color };
+    }
+    catTotals[key] = (catTotals[key] || 0) + e.amount;
+  });
+  return { catTotals, catMeta };
+}
+
+let categoryTrendChart = null;
+function renderCategoryTrend() {
+  const months = [];
+  for (let i = 5; i >= 0; i--) months.push(shiftMonth(currentViewMonth, -i));
+
+  const perMonth = months.map(ym => computeCategoryTotalsForMonth(ym));
+  const combinedMeta = {};
+  perMonth.forEach(({ catMeta }) => Object.assign(combinedMeta, catMeta));
+
+  // Only chart/list categories that had spending in the latest (currently viewed) month,
+  // ranked by that month's amount, so the busiest categories lead.
+  const latest = perMonth[perMonth.length - 1];
+  const catKeys = Object.keys(latest.catTotals).sort((a, b) => latest.catTotals[b] - latest.catTotals[a]);
+
+  if (categoryTrendChart) { categoryTrendChart.destroy(); categoryTrendChart = null; }
+  const canvas = document.getElementById('chart-category-trend');
+  if (canvas && catKeys.length) {
+    categoryTrendChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: months.map(ym => monthLabel(ym)),
+        datasets: catKeys.map(k => ({
+          label: combinedMeta[k] ? combinedMeta[k].label : k,
+          data: perMonth.map(({ catTotals }) => catTotals[k] || 0),
+          borderColor: combinedMeta[k] ? combinedMeta[k].color : '#999',
+          backgroundColor: combinedMeta[k] ? combinedMeta[k].color : '#999',
+          tension: 0.25,
+          pointRadius: 3
+        }))
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } }
+        },
+        scales: { y: { beginAtZero: true, ticks: { callback: (v) => fmt(v) } } }
+      }
+    });
+  }
+
+  const prevYm = months[months.length - 2];
+  const prev = perMonth[perMonth.length - 2];
+  const tableWrap = document.getElementById('category-trend-table');
+  tableWrap.innerHTML = '';
+  if (!catKeys.length) {
+    tableWrap.innerHTML = '<p class="empty">ยังไม่มีรายจ่ายในเดือนนี้</p>';
+  } else {
+    catKeys.forEach(k => {
+      const cur = latest.catTotals[k] || 0;
+      const prevVal = (prev && prev.catTotals[k]) || 0;
+      let changeHtml = '<span class="muted">— (ไม่มีข้อมูลเดือนก่อน)</span>';
+      if (prevVal > 0) {
+        const pct = ((cur - prevVal) / prevVal) * 100;
+        const up = pct > 0;
+        const flat = Math.abs(pct) < 0.5;
+        const color = flat ? 'var(--text-secondary)' : (up ? 'var(--rust)' : 'var(--sage)');
+        const arrow = flat ? '→' : (up ? '▲' : '▼');
+        changeHtml = `<span style="color:${color};font-weight:600;">${arrow} ${Math.abs(pct).toFixed(0)}%</span> <span class="muted">เทียบ ${monthLabel(prevYm)}</span>`;
+      } else if (cur > 0) {
+        changeHtml = '<span class="muted">ใหม่ในเดือนนี้</span>';
+      }
+      const meta = combinedMeta[k] || { label: k, color: '#999' };
+      const row = document.createElement('div');
+      row.className = 'row-between';
+      row.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--border);';
+      row.innerHTML = `<span><span class="dot" style="background:${meta.color};margin-right:6px;"></span>${meta.label}</span>
+        <span style="text-align:right;">${fmt(cur)}<br>${changeHtml}</span>`;
+      tableWrap.appendChild(row);
+    });
+  }
+
+  const topWrap = document.getElementById('top-expenses-list');
+  topWrap.innerHTML = '';
+  const topEntries = entries
+    .filter(e => getCat(e.category).kind === 'expense' && e.date.slice(0, 7) === currentViewMonth)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5);
+  if (!topEntries.length) {
+    topWrap.innerHTML = '<p class="empty">ยังไม่มีรายจ่ายในเดือนนี้</p>';
+  } else {
+    topEntries.forEach((e, i) => {
+      const cat = getCat(e.category);
+      const row = document.createElement('div');
+      row.className = 'row-between';
+      row.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--border);';
+      row.innerHTML = `<span>${i + 1}. ${e.note || cat.label} <span class="muted">· ${cat.label} · ${e.date} · ${memberLabel(e.member)}</span></span>
+        <span style="font-weight:600;white-space:nowrap;">${fmt(e.amount)}</span>`;
+      topWrap.appendChild(row);
+    });
+  }
+}
+
 let editingEntryId = null;
 
 let ledgerSearch = '';
@@ -2692,6 +2823,7 @@ function render() {
   renderWithdrawableSummary();
   renderCharts();
   renderCycleBreakdown();
+  renderCategoryTrend();
   renderLedger();
   renderMembersManager();
   renderCategoryManager();
