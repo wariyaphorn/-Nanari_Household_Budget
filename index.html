@@ -69,6 +69,13 @@
         value: value,
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      if (key !== '__meta') {
+        try {
+          await __storageDocRef('__meta').set({
+            lastModified: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.error(e); }
+      }
     }
   };
 </script>
@@ -613,6 +620,10 @@
       <button class="btn btn-primary" id="ma-add">+ เพิ่มบัญชี</button>
       <p class="muted" style="margin-top:6px;">บัญชีธนาคารจริงที่กระเป๋าเงิน/เป้าหมายอ้างอิงถึง เลือกจากลิสต์แทนการพิมพ์เอง ป้องกันสะกดไม่ตรงกัน</p>
     </div>
+  </section>
+
+  <section>
+    <p class="muted" id="code-version" style="text-align:center;">กำลังตรวจสอบเวอร์ชันโค้ด...</p>
   </section>
   </div>
 
@@ -3365,8 +3376,6 @@ function render() {
   document.getElementById('m-spending-locked').textContent = fmt(spendingLocked);
   document.getElementById('m-spending-unspecified').textContent = fmt(spendingUnspecified);
 
-  document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
-
   renderUpcoming();
   renderFutureExpenses();
   renderMonthlyHistory();
@@ -4244,13 +4253,54 @@ document.getElementById('restore-history-btn').addEventListener('click', () => {
     try {
       await __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc(ENTRIES_KEY).get();
       hideLogin();
-      if (!__loaded) { __loaded = true; await load(); }
+      if (!__loaded) { __loaded = true; await load(); watchLastModified(); }
     } catch (e) {
       await __auth.signOut();
       showLogin('บัญชี ' + user.email + ' ไม่ได้รับอนุญาตให้เข้าใช้งานระบบนี้');
     }
   });
 })();
+
+// เวลาที่ข้อมูล (Firestore) ถูกเปลี่ยนแปลงจริงครั้งล่าสุด — อัปเดตแบบเรียลไทม์ ไม่ต้อง refresh หน้าเอง
+function watchLastModified() {
+  try {
+    __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc('__meta')
+      .onSnapshot(function(snap) {
+        const el = document.getElementById('updated-note');
+        if (!el) return;
+        const ts = snap.exists && snap.data().lastModified;
+        if (!ts) { el.textContent = 'ยังไม่มีการเปลี่ยนแปลงข้อมูล'; return; }
+        el.textContent = 'ข้อมูลเปลี่ยนแปลงล่าสุด ' + ts.toDate().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+      }, function(err) { console.error(err); });
+  } catch (e) { console.error(e); }
+}
+
+// เวอร์ชันโค้ด — วันที่ commit ล่าสุดที่แก้ index.html บน GitHub (แคชไว้ใน sessionStorage กันเรียก API ซ้ำบ่อยเกินไป)
+async function loadCodeVersion() {
+  const el = document.getElementById('code-version');
+  if (!el) return;
+  try {
+    const cached = sessionStorage.getItem('code-version-cache');
+    if (cached) { el.textContent = cached; return; }
+  } catch (e) {}
+  try {
+    const res = await fetch('https://api.github.com/repos/wariyaphorn/Ynnget/commits?path=index.html&per_page=1');
+    if (!res.ok) throw new Error('GitHub API error ' + res.status);
+    const data = await res.json();
+    if (Array.isArray(data) && data[0] && data[0].commit && data[0].commit.committer) {
+      const d = new Date(data[0].commit.committer.date);
+      const label = 'เวอร์ชันโค้ด (แก้ไขล่าสุดบน GitHub): ' + d.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+      el.textContent = label;
+      try { sessionStorage.setItem('code-version-cache', label); } catch (e) {}
+    } else {
+      el.textContent = '';
+    }
+  } catch (e) {
+    console.error(e);
+    el.textContent = 'เวอร์ชันโค้ด: ไม่สามารถดึงข้อมูลได้ในขณะนี้';
+  }
+}
+loadCodeVersion();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
