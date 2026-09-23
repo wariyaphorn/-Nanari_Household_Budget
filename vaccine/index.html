@@ -288,6 +288,26 @@ async function saveVaccineCatalog() { try { await window.storage.set(VACCINE_CAT
 async function saveVaccineRecords() { try { await window.storage.set(VACCINE_RECORDS_KEY, JSON.stringify(vaccineRecords)); } catch (e) { console.error(e); } }
 async function saveDentistRecords() { try { await window.storage.set(DENTIST_RECORDS_KEY, JSON.stringify(dentistRecords)); } catch (e) { console.error(e); } }
 
+// migration ครั้งเดียว: รวม catalog ไข้หวัดใหญ่รูปแบบเก่า (แยกเป็นปี) ให้เป็นรายการเดียวแบบ repeatable
+// สำหรับครัวเรือนที่เคยเปิดแอปและมีข้อมูลรูปแบบเก่าบันทึกอยู่ใน Firestore แล้วก่อนหน้านี้
+const OLD_INFLUENZA_IDS = ['influenza-y1-1-1', 'influenza-y1-2-1', 'influenza-y2-1', 'influenza-y3-1', 'influenza-y4-1'];
+async function migrateInfluenzaGrouping() {
+  const hasOld = vaccineCatalog.some(c => OLD_INFLUENZA_IDS.includes(c.id));
+  if (!hasOld) return;
+  vaccineCatalog = vaccineCatalog.filter(c => !OLD_INFLUENZA_IDS.includes(c.id));
+  if (!vaccineCatalog.some(c => c.id === 'influenza-1')) {
+    vaccineCatalog.push({ id: 'influenza-1', nameEn: 'Influenza', nameTh: 'ไข้หวัดใหญ่', recommendedAge: '>=6M, ฉีดซ้ำทุกปี', repeatable: true });
+  }
+  vaccineRecords = vaccineRecords.map(r => {
+    if (OLD_INFLUENZA_IDS.includes(r.catalogId)) {
+      return Object.assign({}, r, { catalogId: 'influenza-1', id: r.id || genId() });
+    }
+    return r;
+  });
+  await saveVaccineCatalog();
+  await saveVaccineRecords();
+}
+
 async function load() {
   try { const r = await window.storage.get(MEMBERS_KEY); members = r ? JSON.parse(r.value) : []; } catch (e) { members = []; }
   try { const r = await window.storage.get(CHILDREN_KEY); children = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultChildren(); } catch (e) { children = defaultChildren(); }
@@ -306,6 +326,8 @@ async function load() {
     const r4 = await window.storage.get(DENTIST_RECORDS_KEY);
     if (!r4) await saveDentistRecords();
   } catch (e) { console.error(e); }
+
+  await migrateInfluenzaGrouping();
 
   if (!selectedDentistChild && children.length) selectedDentistChild = children[0].slug;
   document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
