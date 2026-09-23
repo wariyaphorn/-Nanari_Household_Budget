@@ -73,61 +73,73 @@
 </script>
 <style>
   :root {
-    --ink: #1E3A5F;
-    --ink-light: #3D5A7A;
-    --paper: #F6F3EC;
+    --ink: #234E52;
+    --ink-light: #2F6B70;
+    --paper: #F3FAF8;
     --card: #FFFFFF;
-    --gold: #B8901F;
-    --sage: #43705F;
-    --rust: #B14A34;
-    --text-primary: #23303C;
-    --text-secondary: #62707E;
-    --text-muted: #94A0AB;
-    --border: #E4DFD1;
+    --gold: #F2994A;
+    --sage: #2A9D8F;
+    --rust: #E8604C;
+    --lilac: #8E7CC3;
+    --text-primary: #24373A;
+    --text-secondary: #5C7C7E;
+    --text-muted: #9BB3B4;
+    --border: #DCEEEA;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--paper); font-family: 'Sarabun', sans-serif; color: var(--text-primary); line-height: 1.6; padding: 1.5rem 1rem 4rem; }
-  .wrap { max-width: 980px; margin: 0 auto; }
+  .wrap { max-width: 1040px; margin: 0 auto; }
   header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
   h1 { font-family: 'Kanit', sans-serif; font-weight: 600; font-size: 24px; margin: 0; color: var(--ink); }
   .subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
-  h2 { font-family: 'Kanit', sans-serif; font-weight: 500; font-size: 16px; color: var(--ink); margin: 0 0 10px; }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.25rem; }
+  h2 { font-family: 'Kanit', sans-serif; font-weight: 500; font-size: 16px; color: var(--ink); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 1.25rem 1.4rem; box-shadow: 0 2px 10px rgba(36,90,92,.05); }
   section { margin-bottom: 1.5rem; }
   .muted { color: var(--text-muted); font-size: 12px; }
   .secondary-text { color: var(--text-secondary); font-size: 12px; }
-  .btn { border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 7px 14px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-primary); }
+  .btn { border: 1px solid var(--border); background: var(--card); border-radius: 10px; padding: 8px 16px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-primary); transition: background .15s, transform .1s; }
   .btn:hover { background: var(--paper); }
-  .btn-primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--sage); color: #fff; border-color: var(--sage); font-weight: 600; }
   .btn-primary:hover { background: var(--ink-light); }
-  .headerlink { font-size: 13px; font-family: 'Sarabun'; font-weight: 400; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; vertical-align: middle; margin-left: 6px; }
+  .btn-danger-ghost { background: none; color: var(--rust); border-color: #F6CFC5; }
+  .btn-danger-ghost:hover { background: #FDEEEA; }
+  .headerlink { font-size: 13px; font-family: 'Sarabun'; font-weight: 400; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px; vertical-align: middle; margin-left: 6px; background: var(--card); }
+  .headerlink:hover { border-color: var(--sage); color: var(--ink); }
   .page-tabs { display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; }
-  .page-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 8px 16px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
-  .page-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .page-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 9px 18px; font-family: 'Sarabun'; font-size: 13.5px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
+  .page-tab.active { background: var(--sage); color: #fff; border-color: var(--sage); }
   .page { display: none; }
   .page.active { display: block; }
-  table.vtable { border-collapse: collapse; width: 100%; font-size: 13px; }
-  table.vtable th, table.vtable td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
-  table.vtable th { background: var(--paper); font-family: 'Kanit'; font-weight: 500; color: var(--ink); position: sticky; top: 0; }
-  table.vtable td.namecell { min-width: 180px; }
-  .table-scroll { overflow-x: auto; border-radius: 10px; }
-  .cell-given { color: var(--sage); font-weight: 600; cursor: pointer; }
-  .cell-planned { color: var(--gold); cursor: pointer; }
-  .cell-empty { color: var(--text-muted); cursor: pointer; }
-  .cell-overdue { color: var(--rust); font-weight: 600; cursor: pointer; }
-  div.cell-given, div.cell-planned, div.cell-empty, div.cell-overdue { cursor: pointer; margin-bottom: 4px; }
+  table.vtable { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13px; }
+  table.vtable th, table.vtable td { border-bottom: 1px solid var(--border); padding: 10px 12px; text-align: left; vertical-align: top; }
+  table.vtable th { background: #EAF6F3; font-family: 'Kanit'; font-weight: 500; color: var(--ink); position: sticky; top: 0; font-size: 12.5px; }
+  table.vtable th:first-child { border-top-left-radius: 12px; }
+  table.vtable th:last-child { border-top-right-radius: 12px; }
+  table.vtable tbody tr:hover td { background: #FAFEFD; }
+  table.vtable td.namecell { min-width: 190px; }
+  .table-scroll { overflow-x: auto; border-radius: 14px; border: 1px solid var(--border); }
+  table.vtable { border: none; }
+  .chip { display: inline-flex; align-items: flex-start; gap: 4px; padding: 5px 10px; border-radius: 12px; font-size: 12px; cursor: pointer; margin: 2px 4px 2px 0; border: 1px solid transparent; line-height: 1.4; transition: transform .1s, filter .1s; }
+  .chip:hover { transform: translateY(-1px); filter: brightness(0.97); }
+  .chip-given { background: #E4F6F2; color: #1F7A6E; border-color: #BEE6DC; }
+  .chip-due { background: #FDEEDC; color: #B5651D; border-color: #F7D9AE; }
+  .chip-overdue { background: #FCE3DD; color: #C0402A; border-color: #F4BFAF; font-weight: 600; }
+  .chip-empty { background: #F0F6F5; color: var(--text-muted); border-color: var(--border); }
+  .chip-sub { display: block; font-size: 10.5px; opacity: .85; margin-top: 1px; }
   .cell-note { display: block; font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
   .child-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-  .child-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+  .child-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 7px 16px; font-size: 13px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
   .child-tab.active { background: var(--sage); color: #fff; border-color: var(--sage); }
-  .visit-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1.1rem; margin-bottom: 8px; }
+  .visit-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 0.9rem 1.1rem; margin-bottom: 8px; }
   .row-between { display: flex; justify-content: space-between; align-items: center; }
-  .form-grid { display: grid; gap: 8px; margin-bottom: 8px; }
+  .form-grid { display: grid; gap: 10px; margin-bottom: 8px; }
   .g2 { grid-template-columns: 1fr 1fr; }
   .g3 { grid-template-columns: 1fr 1fr 1fr; }
-  input, select { font-family: 'Sarabun'; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text-primary); width: 100%; }
+  input, select { font-family: 'Sarabun'; font-size: 13px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--card); color: var(--text-primary); width: 100%; }
+  input:focus, select:focus { outline: none; border-color: var(--sage); }
   .empty { color: var(--text-muted); font-size: 13px; }
-  .banner { background: #FCEFC7; border: 1px solid var(--gold); border-radius: 12px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; }
+  .banner { background: #FDEEDC; border: 1px solid #F7D9AE; border-radius: 14px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; color: #7A4E12; }
   .banner a { color: var(--ink); font-weight: 600; }
   .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
   @media (max-width: 640px) {
@@ -136,22 +148,31 @@
   }
   .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
   .del-btn:hover { color: var(--rust); }
+  .modal-overlay { position: fixed; inset: 0; z-index: 5000; background: rgba(36,55,58,.45); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-card { background: var(--card); border-radius: 18px; padding: 1.5rem; max-width: 380px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+  .modal-card h3 { font-family: 'Kanit', sans-serif; font-weight: 500; color: var(--ink); margin: 0 0 4px; font-size: 17px; }
+  .modal-sub { color: var(--text-secondary); font-size: 12.5px; margin: 0 0 16px; }
+  .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 8px; }
+  .modal-actions .right-group { display: flex; gap: 8px; }
+  label.field-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block; }
 </style>
 </head>
 <body>
-<div id="login-overlay" style="position:fixed;inset:0;z-index:9999;background:#1E3A5F;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px;text-align:center;font-family:'Sarabun',sans-serif;">
-  <div style="background:#fff;border-radius:16px;padding:36px 28px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3);">
-    <h2 style="font-family:'Kanit',sans-serif;color:#1E3A5F;margin:0 0 6px;">วัคซีน / สุขภาพลูก</h2>
-    <p style="color:#62707E;font-size:13px;margin:0 0 20px;">เข้าสู่ระบบด้วยบัญชี Google ที่ได้รับอนุญาตเท่านั้น</p>
-    <button id="google-signin-btn" style="width:100%;padding:11px;border-radius:8px;border:1px solid #E4DFD1;background:#fff;font-family:'Sarabun';font-size:14px;cursor:pointer;">เข้าสู่ระบบด้วย Google</button>
-    <p id="login-message" style="margin:16px 0 0;color:#c0392b;font-size:13px;"></p>
+<div id="login-overlay" style="position:fixed;inset:0;z-index:9999;background:#234E52;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px;text-align:center;font-family:'Sarabun',sans-serif;">
+  <div style="background:#fff;border-radius:20px;padding:36px 28px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3);">
+    <div style="font-size:36px;margin-bottom:6px;">🧸</div>
+    <h2 style="font-family:'Kanit',sans-serif;color:#234E52;margin:0 0 6px;">วัคซีน / สุขภาพลูก</h2>
+    <p style="color:#5C7C7E;font-size:13px;margin:0 0 20px;">เข้าสู่ระบบด้วยบัญชี Google ที่ได้รับอนุญาตเท่านั้น</p>
+    <button id="google-signin-btn" style="width:100%;padding:11px;border-radius:10px;border:1px solid #DCEEEA;background:#fff;font-family:'Sarabun';font-size:14px;cursor:pointer;">เข้าสู่ระบบด้วย Google</button>
+    <p id="login-message" style="margin:16px 0 0;color:#E8604C;font-size:13px;"></p>
   </div>
 </div>
 <div class="wrap">
   <header>
     <div>
-      <h1>วัคซีน / สุขภาพลูก <a href="../" class="headerlink" title="ไปแอปงบประมาณ">💰 งบประมาณ</a><a href="../apps/" class="headerlink" title="สลับแอป YNN">🏠 แอปอื่นๆ</a></h1>
+      <h1>🧸 วัคซีน / สุขภาพลูก <a href="../" class="headerlink" title="ไปแอปงบประมาณ">💰 งบประมาณ</a><a href="../apps/" class="headerlink" title="สลับแอป YNN">🏠 แอปอื่นๆ</a></h1>
       <p class="subtitle" id="updated-note">กำลังโหลดข้อมูล...</p>
+      <p class="subtitle" id="code-version" style="margin-top:2px;">เวอร์ชันโค้ด: กำลังตรวจสอบ...</p>
     </div>
   </header>
 
@@ -224,6 +245,34 @@
         <button class="btn btn-primary" id="ch-add">+ เพิ่มลูกคนใหม่</button>
       </div>
     </section>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dose-modal">
+  <div class="modal-card">
+    <h3 id="dose-modal-title">บันทึกการฉีดวัคซีน</h3>
+    <p class="modal-sub" id="dose-modal-sub"></p>
+    <div class="form-grid">
+      <div>
+        <label class="field-label" for="dm-date">วันที่ฉีด</label>
+        <input type="date" id="dm-date">
+      </div>
+      <div>
+        <label class="field-label" for="dm-note">หมายเหตุ (เช่น สายพันธุ์/ยี่ห้อ)</label>
+        <input type="text" id="dm-note" placeholder="ไม่บังคับ">
+      </div>
+      <div>
+        <label class="field-label" for="dm-cost">ค่าใช้จ่าย (บาท)</label>
+        <input type="number" id="dm-cost" placeholder="ไม่บังคับ" min="0">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="dm-delete" style="display:none;">ลบรายการ</button>
+      <div class="right-group">
+        <button class="btn" id="dm-cancel">ยกเลิก</button>
+        <button class="btn btn-primary" id="dm-save">บันทึก</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -365,9 +414,47 @@ async function load() {
   await migrateToVaccinePlans();
 
   if (!selectedDentistChild && children.length) selectedDentistChild = children[0].slug;
-  document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
   render();
 }
+
+function watchLastModified() {
+  try {
+    __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc('__meta')
+      .onSnapshot(function(snap) {
+        const el = document.getElementById('updated-note');
+        if (!el) return;
+        const ts = snap.exists && snap.data().lastModified;
+        if (!ts) { el.textContent = 'ยังไม่มีการเปลี่ยนแปลงข้อมูล'; return; }
+        el.textContent = 'ข้อมูลเปลี่ยนแปลงล่าสุด ' + ts.toDate().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+      }, function(err) { console.error(err); });
+  } catch (e) { console.error(e); }
+}
+
+async function loadCodeVersion() {
+  const el = document.getElementById('code-version');
+  if (!el) return;
+  try {
+    const cached = sessionStorage.getItem('vaccine-code-version-cache');
+    if (cached) { el.textContent = cached; return; }
+  } catch (e) {}
+  try {
+    const res = await fetch('https://api.github.com/repos/wariyaphorn/Ynnget/commits?path=vaccine/index.html&per_page=1');
+    if (!res.ok) throw new Error('GitHub API error ' + res.status);
+    const data = await res.json();
+    if (Array.isArray(data) && data[0] && data[0].commit && data[0].commit.committer) {
+      const d = new Date(data[0].commit.committer.date);
+      const label = 'เวอร์ชันโค้ด (แก้ไขล่าสุดบน GitHub): ' + d.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+      el.textContent = label;
+      try { sessionStorage.setItem('vaccine-code-version-cache', label); } catch (e) {}
+    } else {
+      el.textContent = 'เวอร์ชันโค้ด: ไม่สามารถดึงข้อมูลได้ในขณะนี้';
+    }
+  } catch (e) {
+    console.error(e);
+    el.textContent = 'เวอร์ชันโค้ด: ไม่สามารถดึงข้อมูลได้ในขณะนี้';
+  }
+}
+loadCodeVersion();
 
 function renderSetupBanner() {
   const wrap = document.getElementById('setup-banner');
@@ -416,9 +503,10 @@ function renderVaccineTable() {
         recs.forEach(rec => {
           const isFuture = rec.dateGiven > todayISO;
           const age = calcAge(c.birthDate, rec.dateGiven);
-          cellHtml += `<div class="${isFuture ? 'cell-planned' : 'cell-given'}" data-recid="${rec.id}">${fmtDateStr(rec.dateGiven)}${age ? ' <span class="muted">(' + age + ')</span>' : ''}${rec.note ? `<span class="cell-note">${rec.note}</span>` : ''}${rec.cost != null ? `<span class="cell-note">${fmt(rec.cost)}</span>` : ''}</div>`;
+          const sub = [age ? 'อายุ ' + age : '', rec.note || '', rec.cost != null ? fmt(rec.cost) : ''].filter(Boolean).join(' · ');
+          cellHtml += `<span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-recid="${rec.id}">${fmtDateStr(rec.dateGiven)}${sub ? `<span class="chip-sub">${sub}</span>` : ''}</span>`;
         });
-        cellHtml += `<div class="cell-empty" data-addplan="${cat.id}" data-addchild="${c.slug}">+ เพิ่มเข็ม</div>`;
+        cellHtml += `<span class="chip chip-empty" data-addplan="${cat.id}" data-addchild="${c.slug}">+ เพิ่มเข็ม</span>`;
         html += `<td>${cellHtml}</td>`;
       } else {
         let cellHtml = '';
@@ -427,15 +515,16 @@ function renderVaccineTable() {
           if (rec && rec.dateGiven) {
             const isFuture = rec.dateGiven > todayISO;
             const age = calcAge(c.birthDate, rec.dateGiven);
-            cellHtml += `<div class="${isFuture ? 'cell-planned' : 'cell-given'}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}"><strong>${dose.label}:</strong> ${fmtDateStr(rec.dateGiven)}${age ? ' <span class="muted">(' + age + ')</span>' : ''}${rec.note ? `<span class="cell-note">${rec.note}</span>` : ''}${rec.cost != null ? `<span class="cell-note">${fmt(rec.cost)}</span>` : ''}</div>`;
+            const sub = [age ? 'อายุ ' + age : '', rec.note || '', rec.cost != null ? fmt(rec.cost) : ''].filter(Boolean).join(' · ');
+            cellHtml += `<span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${dose.label}: ${fmtDateStr(rec.dateGiven)}${sub ? `<span class="chip-sub">${sub}</span>` : ''}</span>`;
           } else {
             const predicted = computeDosePrediction(dose, c.birthDate, cat.id, vaccineRecords, c.slug);
-            let statusClass = 'cell-empty', statusText = 'ยังไม่บันทึก';
+            let chipClass = 'chip-empty', statusText = 'ยังไม่บันทึก';
             if (predicted) {
-              if (predicted <= todayISO) { statusClass = 'cell-overdue'; statusText = 'ควรฉีดแล้ว (~' + fmtDateStr(predicted) + ')'; }
-              else { statusClass = 'cell-planned'; statusText = 'คาดว่า ~' + fmtDateStr(predicted); }
+              if (predicted <= todayISO) { chipClass = 'chip-overdue'; statusText = 'ควรฉีดแล้ว (~' + fmtDateStr(predicted) + ')'; }
+              else { chipClass = 'chip-due'; statusText = 'คาดว่า ~' + fmtDateStr(predicted); }
             }
-            cellHtml += `<div class="${statusClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}"><strong>${dose.label}:</strong> ${statusText}</div>`;
+            cellHtml += `<span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${dose.label}: ${statusText}</span>`;
           }
         });
         html += `<td>${cellHtml}</td>`;
@@ -446,68 +535,96 @@ function renderVaccineTable() {
   html += '</tbody>';
   table.innerHTML = html;
   table.querySelectorAll('[data-plan]').forEach(el => {
-    el.addEventListener('click', () => editDoseRecord(el.dataset.plan, parseInt(el.dataset.dose, 10), el.dataset.child));
+    el.addEventListener('click', () => openDoseModal(el.dataset.plan, parseInt(el.dataset.dose, 10), el.dataset.child));
   });
   table.querySelectorAll('[data-recid]').forEach(el => {
-    el.addEventListener('click', () => editVaccineRecordById(el.dataset.recid));
+    el.addEventListener('click', () => openRepeatEditModal(el.dataset.recid));
   });
   table.querySelectorAll('[data-addplan]').forEach(el => {
-    el.addEventListener('click', () => addVaccineRecordEntry(el.dataset.addplan, el.dataset.addchild));
+    el.addEventListener('click', () => openRepeatAddModal(el.dataset.addplan, el.dataset.addchild));
   });
 }
 
-async function editDoseRecord(planId, doseNumber, childSlug) {
-  const existing = vaccineRecords.find(r => r.planId === planId && r.doseNumber === doseNumber && r.member === childSlug);
-  const dateInput = window.prompt('วันที่ฉีด (รูปแบบ YYYY-MM-DD) — ถ้าเป็นวันในอนาคตจะถือว่าเป็นแผนที่วางไว้\nปล่อยว่างแล้วกดตกลงเพื่อ "ลบ" รายการนี้ทิ้ง', existing ? existing.dateGiven : toISO(new Date()));
-  if (dateInput === null) return;
-  const trimmed = dateInput.trim();
-  if (!trimmed) {
-    if (existing) vaccineRecords = vaccineRecords.filter(r => !(r.planId === planId && r.doseNumber === doseNumber && r.member === childSlug));
-    await saveVaccineRecords(); render();
-    return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) { alert('รูปแบบวันที่ไม่ถูกต้อง ต้องเป็น YYYY-MM-DD เช่น 2026-09-23'); return; }
-  const note = window.prompt('หมายเหตุ (ไม่บังคับ)', existing ? (existing.note || '') : '') || '';
-  const costStr = window.prompt('ค่าใช้จ่าย เป็นตัวเลข บาท (ไม่บังคับ ปล่อยว่างได้)', existing && existing.cost != null ? String(existing.cost) : '');
-  const cost = costStr && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
-  if (existing) {
-    existing.dateGiven = trimmed; existing.note = note; existing.cost = cost;
-  } else {
-    vaccineRecords.push({ id: genId(), planId, doseNumber, member: childSlug, dateGiven: trimmed, note, cost });
-  }
-  await saveVaccineRecords(); render();
+// --- modal บันทึก/แก้ไขวัคซีน (แทนที่ window.prompt แบบเดิม) ---
+let modalContext = null;
+
+function planLabel(planId) {
+  const p = vaccineCatalog.find(x => x.id === planId);
+  return p ? (p.nameTh || p.nameEn) : planId;
 }
 
-async function editVaccineRecordById(recordId) {
+function fillDoseModal(existing, titleText, subText) {
+  document.getElementById('dose-modal-title').textContent = titleText;
+  document.getElementById('dose-modal-sub').textContent = subText;
+  document.getElementById('dm-date').value = existing ? existing.dateGiven : toISO(new Date());
+  document.getElementById('dm-note').value = existing ? (existing.note || '') : '';
+  document.getElementById('dm-cost').value = existing && existing.cost != null ? existing.cost : '';
+  document.getElementById('dm-delete').style.display = existing ? 'inline-block' : 'none';
+  document.getElementById('dose-modal').style.display = 'flex';
+}
+function closeDoseModal() {
+  document.getElementById('dose-modal').style.display = 'none';
+  modalContext = null;
+}
+
+function openDoseModal(planId, doseNumber, childSlug) {
+  const existing = vaccineRecords.find(r => r.planId === planId && r.doseNumber === doseNumber && r.member === childSlug);
+  const cat = vaccineCatalog.find(p => p.id === planId);
+  const dose = cat && (cat.doses || []).find(d => d.doseNumber === doseNumber);
+  modalContext = { mode: 'dose', planId, doseNumber, childSlug };
+  const child = children.find(c => c.slug === childSlug);
+  fillDoseModal(existing, `${planLabel(planId)} — ${dose ? dose.label : ''}`, childLabel(child || { slug: childSlug }));
+}
+function openRepeatAddModal(planId, childSlug) {
+  modalContext = { mode: 'repeatAdd', planId, childSlug };
+  const child = children.find(c => c.slug === childSlug);
+  fillDoseModal(null, `${planLabel(planId)} — เพิ่มเข็มใหม่`, childLabel(child || { slug: childSlug }));
+}
+function openRepeatEditModal(recordId) {
   const existing = vaccineRecords.find(r => r.id === recordId);
   if (!existing) return;
-  const dateInput = window.prompt('วันที่ฉีด (รูปแบบ YYYY-MM-DD)\nปล่อยว่างแล้วกดตกลงเพื่อ "ลบ" รายการนี้ทิ้ง', existing.dateGiven);
-  if (dateInput === null) return;
-  const trimmed = dateInput.trim();
-  if (!trimmed) {
-    vaccineRecords = vaccineRecords.filter(r => r.id !== recordId);
-    await saveVaccineRecords(); render();
-    return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) { alert('รูปแบบวันที่ไม่ถูกต้อง ต้องเป็น YYYY-MM-DD เช่น 2026-09-23'); return; }
-  const note = window.prompt('หมายเหตุ (ไม่บังคับ)', existing.note || '') || '';
-  const costStr = window.prompt('ค่าใช้จ่าย เป็นตัวเลข บาท (ไม่บังคับ ปล่อยว่างได้)', existing.cost != null ? String(existing.cost) : '');
-  const cost = costStr && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
-  existing.dateGiven = trimmed; existing.note = note; existing.cost = cost;
-  await saveVaccineRecords(); render();
+  modalContext = { mode: 'repeatEdit', recordId };
+  const child = children.find(c => c.slug === existing.member);
+  fillDoseModal(existing, `${planLabel(existing.planId)} — แก้ไขเข็ม`, childLabel(child || { slug: existing.member }));
 }
 
-async function addVaccineRecordEntry(planId, childSlug) {
-  const dateInput = window.prompt('วันที่ฉีดเข็มใหม่ (รูปแบบ YYYY-MM-DD)', toISO(new Date()));
-  if (dateInput === null) return;
-  const trimmed = dateInput.trim();
-  if (!trimmed || !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) { alert('รูปแบบวันที่ไม่ถูกต้อง ต้องเป็น YYYY-MM-DD เช่น 2026-09-23'); return; }
-  const note = window.prompt('หมายเหตุ (ไม่บังคับ)', '') || '';
-  const costStr = window.prompt('ค่าใช้จ่าย เป็นตัวเลข บาท (ไม่บังคับ ปล่อยว่างได้)', '');
-  const cost = costStr && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
-  vaccineRecords.push({ id: genId(), planId, doseNumber: null, member: childSlug, dateGiven: trimmed, note, cost });
-  await saveVaccineRecords(); render();
-}
+document.getElementById('dm-cancel').addEventListener('click', closeDoseModal);
+document.getElementById('dose-modal').addEventListener('click', (e) => { if (e.target.id === 'dose-modal') closeDoseModal(); });
+
+document.getElementById('dm-save').addEventListener('click', async () => {
+  if (!modalContext) return;
+  const dateVal = document.getElementById('dm-date').value;
+  if (!dateVal) { alert('กรุณาเลือกวันที่'); return; }
+  const note = document.getElementById('dm-note').value.trim();
+  const costStr = document.getElementById('dm-cost').value;
+  const cost = costStr !== '' && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
+
+  if (modalContext.mode === 'dose') {
+    vaccineRecords = vaccineRecords.filter(r => !(r.planId === modalContext.planId && r.doseNumber === modalContext.doseNumber && r.member === modalContext.childSlug));
+    vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: modalContext.doseNumber, member: modalContext.childSlug, dateGiven: dateVal, note, cost });
+  } else if (modalContext.mode === 'repeatAdd') {
+    vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: null, member: modalContext.childSlug, dateGiven: dateVal, note, cost });
+  } else if (modalContext.mode === 'repeatEdit') {
+    const rec = vaccineRecords.find(r => r.id === modalContext.recordId);
+    if (rec) { rec.dateGiven = dateVal; rec.note = note; rec.cost = cost; }
+  }
+  await saveVaccineRecords();
+  closeDoseModal();
+  render();
+});
+
+document.getElementById('dm-delete').addEventListener('click', async () => {
+  if (!modalContext) return;
+  if (!confirm('ลบรายการนี้?')) return;
+  if (modalContext.mode === 'dose') {
+    vaccineRecords = vaccineRecords.filter(r => !(r.planId === modalContext.planId && r.doseNumber === modalContext.doseNumber && r.member === modalContext.childSlug));
+  } else if (modalContext.mode === 'repeatEdit') {
+    vaccineRecords = vaccineRecords.filter(r => r.id !== modalContext.recordId);
+  }
+  await saveVaccineRecords();
+  closeDoseModal();
+  render();
+});
 
 function renderDentistTab() {
   const tabsWrap = document.getElementById('dentist-child-tabs');
@@ -540,6 +657,7 @@ function renderDentistTab() {
     listWrap.appendChild(div);
   });
   listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('ลบรายการนี้?')) return;
     dentistRecords = dentistRecords.filter(r => r.id !== btn.dataset.del);
     await saveDentistRecords(); render();
   }));
@@ -660,11 +778,9 @@ document.getElementById('ch-add').addEventListener('click', async () => {
       hideLogin();
       if (!__loaded) {
         __loaded = true;
-        const r = await window.storage.get(MEMBERS_KEY);
-        const m = r ? JSON.parse(r.value) : [];
-        refreshChildMemberSelect(chMemberSelect);
         await load();
         refreshChildMemberSelect(chMemberSelect);
+        watchLastModified();
       }
     } catch (e) {
       await __auth.signOut();
