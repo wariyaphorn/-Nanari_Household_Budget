@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>วัคซีน / สุขภาพลูก</title>
+<link rel="icon" href="../icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Kanit:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.js"></script>
+<script>
+  // --- Firebase-backed storage — ใช้ project เดียวกับแอปงบประมาณ (รหัสครัวเรือนเดียวกัน) ---
+  var firebaseConfig = {
+    apiKey: "AIzaSyAc4fTRghYTArUAXkIFWPvIGbdt9xlbz3g",
+    authDomain: "household-budget-c31ce.firebaseapp.com",
+    projectId: "household-budget-c31ce",
+    storageBucket: "household-budget-c31ce.firebasestorage.app",
+    messagingSenderId: "905564068568",
+    appId: "1:905564068568:web:e8e227e3922f0e8d8a15ad",
+    measurementId: "G-PBHHL9749D"
+  };
+  firebase.initializeApp(firebaseConfig);
+  var __db = firebase.firestore();
+  var __auth = firebase.auth();
+
+  window.HOUSEHOLD_ID = localStorage.getItem('household-id') || '';
+  window.setHouseholdId = function(id) {
+    id = (id || '').trim();
+    if (!id) return false;
+    localStorage.setItem('household-id', id);
+    window.HOUSEHOLD_ID = id;
+    return true;
+  };
+  if (!window.HOUSEHOLD_ID) {
+    var __entered = window.prompt(
+      'ตั้งรหัสครัวเรือน (Household ID)\n\n' +
+      'ใส่รหัสเดียวกับที่ใช้ในแอปงบประมาณครัวเรือน เพื่อให้เห็นรายชื่อสมาชิกชุดเดียวกัน:',
+      ''
+    );
+    if (!window.setHouseholdId(__entered)) {
+      window.setHouseholdId('default-household');
+    }
+  }
+
+  function __storageDocRef(key) {
+    return __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc(key);
+  }
+
+  window.storage = {
+    get: async function(key) {
+      var snap = await __storageDocRef(key).get();
+      if (!snap.exists) return null;
+      var d = snap.data();
+      return { value: d && typeof d.value === 'string' ? d.value : null };
+    },
+    set: async function(key, value) {
+      await __storageDocRef(key).set({
+        value: value,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      if (key !== '__meta') {
+        try {
+          await __storageDocRef('__meta').set({
+            lastModified: firebase.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (e) { console.error(e); }
+      }
+    }
+  };
+</script>
+<style>
+  :root {
+    --ink: #1E3A5F;
+    --ink-light: #3D5A7A;
+    --paper: #F6F3EC;
+    --card: #FFFFFF;
+    --gold: #B8901F;
+    --sage: #43705F;
+    --rust: #B14A34;
+    --text-primary: #23303C;
+    --text-secondary: #62707E;
+    --text-muted: #94A0AB;
+    --border: #E4DFD1;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); font-family: 'Sarabun', sans-serif; color: var(--text-primary); line-height: 1.6; padding: 1.5rem 1rem 4rem; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 8px; }
+  h1 { font-family: 'Kanit', sans-serif; font-weight: 600; font-size: 24px; margin: 0; color: var(--ink); }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin: 4px 0 0; }
+  h2 { font-family: 'Kanit', sans-serif; font-weight: 500; font-size: 16px; color: var(--ink); margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.1rem 1.25rem; }
+  section { margin-bottom: 1.5rem; }
+  .muted { color: var(--text-muted); font-size: 12px; }
+  .secondary-text { color: var(--text-secondary); font-size: 12px; }
+  .btn { border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 7px 14px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-primary); }
+  .btn:hover { background: var(--paper); }
+  .btn-primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .btn-primary:hover { background: var(--ink-light); }
+  .headerlink { font-size: 13px; font-family: 'Sarabun'; font-weight: 400; color: var(--text-secondary); text-decoration: none; border: 1px solid var(--border); border-radius: 20px; padding: 3px 10px; vertical-align: middle; margin-left: 6px; }
+  .page-tabs { display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  .page-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 8px 16px; font-family: 'Sarabun'; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+  .page-tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .page { display: none; }
+  .page.active { display: block; }
+  table.vtable { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.vtable th, table.vtable td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  table.vtable th { background: var(--paper); font-family: 'Kanit'; font-weight: 500; color: var(--ink); position: sticky; top: 0; }
+  table.vtable td.namecell { min-width: 180px; }
+  .table-scroll { overflow-x: auto; border-radius: 10px; }
+  .cell-given { color: var(--sage); font-weight: 600; cursor: pointer; }
+  .cell-planned { color: var(--gold); cursor: pointer; }
+  .cell-empty { color: var(--text-muted); cursor: pointer; }
+  .cell-note { display: block; font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .child-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .child-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 6px 14px; font-size: 13px; cursor: pointer; color: var(--text-secondary); }
+  .child-tab.active { background: var(--sage); color: #fff; border-color: var(--sage); }
+  .visit-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1.1rem; margin-bottom: 8px; }
+  .row-between { display: flex; justify-content: space-between; align-items: center; }
+  .form-grid { display: grid; gap: 8px; margin-bottom: 8px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  input, select { font-family: 'Sarabun'; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text-primary); width: 100%; }
+  .empty { color: var(--text-muted); font-size: 13px; }
+  .banner { background: #FCEFC7; border: 1px solid var(--gold); border-radius: 12px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; }
+  .banner a { color: var(--ink); font-weight: 600; }
+  .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+  @media (max-width: 640px) {
+    .setup-row { grid-template-columns: 1fr; }
+    .g2, .g3 { grid-template-columns: 1fr; }
+  }
+  .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
+  .del-btn:hover { color: var(--rust); }
+</style>
+</head>
+<body>
+<div id="login-overlay" style="position:fixed;inset:0;z-index:9999;background:#1E3A5F;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:24px;text-align:center;font-family:'Sarabun',sans-serif;">
+  <div style="background:#fff;border-radius:16px;padding:36px 28px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3);">
+    <h2 style="font-family:'Kanit',sans-serif;color:#1E3A5F;margin:0 0 6px;">วัคซีน / สุขภาพลูก</h2>
+    <p style="color:#62707E;font-size:13px;margin:0 0 20px;">เข้าสู่ระบบด้วยบัญชี Google ที่ได้รับอนุญาตเท่านั้น</p>
+    <button id="google-signin-btn" style="width:100%;padding:11px;border-radius:8px;border:1px solid #E4DFD1;background:#fff;font-family:'Sarabun';font-size:14px;cursor:pointer;">เข้าสู่ระบบด้วย Google</button>
+    <p id="login-message" style="margin:16px 0 0;color:#c0392b;font-size:13px;"></p>
+  </div>
+</div>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>วัคซีน / สุขภาพลูก <a href="../" class="headerlink" title="ไปแอปงบประมาณ">💰 งบประมาณ</a><a href="../apps/" class="headerlink" title="สลับแอป YNN">🏠 แอปอื่นๆ</a></h1>
+      <p class="subtitle" id="updated-note">กำลังโหลดข้อมูล...</p>
+    </div>
+  </header>
+
+  <nav class="page-tabs">
+    <button class="page-tab active" data-page="vaccine">วัคซีน</button>
+    <button class="page-tab" data-page="dentist">ทันตกรรม</button>
+    <button class="page-tab" data-page="setup">ตั้งค่า</button>
+  </nav>
+
+  <div id="setup-banner"></div>
+
+  <div id="page-vaccine" class="page active">
+    <section>
+      <div class="card">
+        <h2>ตารางวัคซีน</h2>
+        <p class="muted" style="margin:0 0 10px;">คลิกที่ช่องของลูกแต่ละคนเพื่อบันทึก/แก้วันที่ฉีด — ตัวหนังสือสีเขียว = ฉีดแล้ว, สีทอง = วันที่วางแผนไว้ในอนาคต, สีเทา = ยังไม่บันทึก</p>
+        <div class="table-scroll">
+          <table class="vtable" id="vaccine-table"></table>
+        </div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <h2>เพิ่มรายการวัคซีนใหม่ในตาราง</h2>
+        <div class="form-grid g3">
+          <input type="text" id="vc-nameEn" placeholder="ชื่อวัคซีน (อังกฤษ)">
+          <input type="text" id="vc-nameTh" placeholder="ชื่อภาษาไทย">
+          <input type="text" id="vc-age" placeholder="ช่วงอายุที่แนะนำ เช่น 2M">
+        </div>
+        <button class="btn btn-primary" id="vc-add">+ เพิ่มรายการวัคซีน</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="page-dentist" class="page">
+    <section>
+      <div class="card">
+        <h2>ทันตกรรม</h2>
+        <div class="child-tabs" id="dentist-child-tabs"></div>
+        <div id="dentist-list"></div>
+        <div class="form-grid g3">
+          <input type="date" id="dt-date">
+          <input type="number" id="dt-milk" placeholder="ฟันน้ำนม (ซี่)" min="0">
+          <input type="number" id="dt-permanent" placeholder="ฟันแท้ (ซี่)" min="0">
+        </div>
+        <div class="form-grid g2">
+          <input type="number" id="dt-decayed" placeholder="ฟันผุ (ซี่)" min="0">
+          <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="page-setup" class="page">
+    <section>
+      <div class="card">
+        <h2>เชื่อมโยงกับรายชื่อสมาชิกในบ้าน</h2>
+        <p class="muted" style="margin:0 0 14px;">เลือกว่าใครในรายชื่อสมาชิก (จากแอปงบประมาณ) คือลูกแต่ละคน พร้อมระบุวันเกิด เพื่อให้คำนวณอายุตอนฉีด/พบหมอได้ถูกต้อง</p>
+        <div id="children-setup"></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <h2>เพิ่มลูกคนใหม่</h2>
+        <div class="form-grid g3">
+          <input type="text" id="ch-slug" placeholder="ชื่อ (ภาษาอังกฤษ ไม่เว้นวรรค) เช่น newborn">
+          <select id="ch-member"></select>
+          <input type="date" id="ch-birth">
+        </div>
+        <button class="btn btn-primary" id="ch-add">+ เพิ่มลูกคนใหม่</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const MEMBERS_KEY = 'household-ledger-members';
+const CHILDREN_KEY = 'vaccine-children';
+const VACCINE_CATALOG_KEY = 'vaccine-catalog';
+const VACCINE_RECORDS_KEY = 'vaccine-records';
+const DENTIST_RECORDS_KEY = 'dentist-records';
+
+const defaultChildren = () => [
+  { slug: 'lalynn', memberKey: '', birthDate: '2023-12-14' },
+  { slug: 'gawynn', memberKey: '', birthDate: '2025-11-19' },
+  { slug: 'kanynn', memberKey: '', birthDate: '2025-11-19' }
+];
+
+const defaultVaccineCatalog = () => VACCINE_CATALOG_SEED;
+const defaultVaccineRecords = () => VACCINE_RECORDS_SEED;
+const defaultDentistRecords = () => DENTIST_RECORDS_SEED;
+
+const VACCINE_CATALOG_SEED = [{"id": "bcg-1", "nameEn": "BCG", "nameTh": "วัคซีนป้องกันวัณโรค", "recommendedAge": "แรกเกิด"}, {"id": "hepatitis-b-hbv-1", "nameEn": "Hepatitis B (HBV)", "nameTh": "วัคซีนป้องกันตับอักเสบบี", "recommendedAge": "แรกเกิด"}, {"id": "hepatitis-b-hbv-2", "nameEn": "Hepatitis B (HBV)", "nameTh": "วัคซีนป้องกันตับอักเสบบี", "recommendedAge": "2M"}, {"id": "hepatitis-b-hbv-3", "nameEn": "Hepatitis B (HBV)", "nameTh": "วัคซีนป้องกันตับอักเสบบี", "recommendedAge": "6M"}, {"id": "dtp-ipv-1", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ", "recommendedAge": "2M"}, {"id": "dtp-ipv-2", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ", "recommendedAge": "4M"}, {"id": "dtp-ipv-3", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ", "recommendedAge": "6M"}, {"id": "dtp-ipv-4", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ (กระตุ้น)", "recommendedAge": "18M"}, {"id": "dtp-ipv-5", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ (กระตุ้น)", "recommendedAge": "4Y"}, {"id": "hib-1", "nameEn": "Hib", "nameTh": "ฮิบ (เยื่อหุ้มสมองอักเสบฮิบ)", "recommendedAge": "2M"}, {"id": "hib-2", "nameEn": "Hib", "nameTh": "ฮิบ (เยื่อหุ้มสมองอักเสบฮิบ)", "recommendedAge": "4M"}, {"id": "hib-3", "nameEn": "Hib", "nameTh": "ฮิบ (เยื่อหุ้มสมองอักเสบฮิบ)", "recommendedAge": "6M"}, {"id": "hib-4", "nameEn": "Hib", "nameTh": "ฮิบ (เยื่อหุ้มสมองอักเสบฮิบ)", "recommendedAge": "18M"}, {"id": "pcv-ipd-1", "nameEn": "PCV (IPD)", "nameTh": "นิวโมคอคคัส / ปอดอักเสบ", "recommendedAge": "2M"}, {"id": "pcv-ipd-2", "nameEn": "PCV (IPD)", "nameTh": "นิวโมคอคคัส / ปอดอักเสบ", "recommendedAge": "4M"}, {"id": "pcv-ipd-3", "nameEn": "PCV (IPD)", "nameTh": "นิวโมคอคคัส / ปอดอักเสบ", "recommendedAge": "6M"}, {"id": "pcv-ipd-4", "nameEn": "PCV (IPD)", "nameTh": "นิวโมคอคคัส / ปอดอักเสบ", "recommendedAge": "12M-24M"}, {"id": "rota-vaccine-1", "nameEn": "Rota Vaccine", "nameTh": "โรต้า (ท้องเสียรุนแรง)", "recommendedAge": "2M"}, {"id": "rota-vaccine-2", "nameEn": "Rota Vaccine", "nameTh": "โรต้า (ท้องเสียรุนแรง)", "recommendedAge": "4M"}, {"id": "japanese-encephalitis-je-1", "nameEn": "Japanese Encephalitis (JE)", "nameTh": "ไข้สมองอักเสบเจอี", "recommendedAge": "9M-12M"}, {"id": "japanese-encephalitis-je-2", "nameEn": "Japanese Encephalitis (JE)", "nameTh": "ไข้สมองอักเสบเจอี", "recommendedAge": "12M-18M"}, {"id": "mmr-1", "nameEn": "MMR", "nameTh": "หัด-คางทูม-หัดเยอรมัน", "recommendedAge": "9M-12M"}, {"id": "mmr-2", "nameEn": "MMR", "nameTh": "หัด-คางทูม-หัดเยอรมัน", "recommendedAge": "18M-4Y"}, {"id": "varicella-1", "nameEn": "Varicella", "nameTh": "อีสุกอีใส", "recommendedAge": "12M"}, {"id": "varicella-2", "nameEn": "Varicella", "nameTh": "อีสุกอีใส", "recommendedAge": "18M-4Y"}, {"id": "hepatitis-a-hav-1", "nameEn": "Hepatitis A (HAV)", "nameTh": "ตับอักเสบเอ", "recommendedAge": "12M-18M"}, {"id": "hepatitis-a-hav-2", "nameEn": "Hepatitis A (HAV)", "nameTh": "ตับอักเสบเอ", "recommendedAge": "ห่างจากเข็มแรก 6-12M"}, {"id": "ev71-1", "nameEn": "EV71", "nameTh": "มือเท้าปาก (สายพันธุ์รุนแรง)", "recommendedAge": "6M-5Y"}, {"id": "ev71-2", "nameEn": "EV71", "nameTh": "มือเท้าปาก (สายพันธุ์รุนแรง)", "recommendedAge": "ห่างจากเข็มแรก 1M"}, {"id": "menb-1", "nameEn": "MenB", "nameTh": "ไข้กาฬหลังแอ่น B", "recommendedAge": "2M"}, {"id": "menb-2", "nameEn": "MenB", "nameTh": "ไข้กาฬหลังแอ่น B", "recommendedAge": "4M"}, {"id": "menb-3", "nameEn": "MenB", "nameTh": "ไข้กาฬหลังแอ่น B", "recommendedAge": "12M"}, {"id": "rabies-1", "nameEn": "Rabies", "nameTh": "พิษสุนัขบ้า", "recommendedAge": "ทุกวัย"}, {"id": "rabies-2", "nameEn": "Rabies", "nameTh": "พิษสุนัขบ้า", "recommendedAge": "ห่างเข็มแรก 7 วัน"}, {"id": "dengue-fever-1", "nameEn": "Dengue fever", "nameTh": "ไข้เลือดออก", "recommendedAge": "4Y"}, {"id": "dengue-fever-2", "nameEn": "Dengue fever", "nameTh": "ไข้เลือดออก", "recommendedAge": "ห่างจากเข็มแรก 3 เดือน"}, {"id": "hpv-1", "nameEn": "HPV", "nameTh": "ป้องกันมะเร็งปากมดลูก 9 สายพันธ์", "recommendedAge": "9Y"}, {"id": "hpv-2", "nameEn": "HPV", "nameTh": "ป้องกันมะเร็งปากมดลูก 9 สายพันธ์", "recommendedAge": "ห่างจากเข็มแรก6M-12M"}, {"id": "tdap-tp-1", "nameEn": "Tdap/TP", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน", "recommendedAge": "11Y-12Y"}, {"id": "menacwy-1", "nameEn": "MenACWY", "nameTh": "ไข้กาฬหลังแอ่น 4 สายพันธุ์", "recommendedAge": ">=9M"}, {"id": "influenza-y1-1-1", "nameEn": "Influenza Y1#1", "nameTh": "ไข้หวัดใหญ่", "recommendedAge": ">=6M"}, {"id": "influenza-y1-2-1", "nameEn": "Influenza Y1#2", "nameTh": "ไข้หวัดใหญ่", "recommendedAge": "ห่างจากเข็มแรก 1M"}, {"id": "influenza-y2-1", "nameEn": "Influenza Y2", "nameTh": "ไข้หวัดใหญ่", "recommendedAge": "ปีละครัง"}, {"id": "influenza-y3-1", "nameEn": "Influenza Y3", "nameTh": "ไข้หวัดใหญ่", "recommendedAge": "ปีละครัง"}, {"id": "influenza-y4-1", "nameEn": "Influenza Y4", "nameTh": "ไข้หวัดใหญ่", "recommendedAge": "ปีละครัง"}, {"id": "rsv-1", "nameEn": "RSV", "nameTh": "Respiratory syncytial virus", "recommendedAge": "อายุน้อยกว่า 1 ปีควรฉีด"}];
+const VACCINE_RECORDS_SEED = [{"catalogId": "bcg-1", "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"catalogId": "bcg-1", "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"catalogId": "bcg-1", "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-1", "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-1", "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-1", "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-2", "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-2", "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"catalogId": "hepatitis-b-hbv-2", "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"catalogId": "hepatitis-b-hbv-3", "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"catalogId": "hepatitis-b-hbv-3", "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hepatitis-b-hbv-3", "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-1", "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"catalogId": "dtp-ipv-1", "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-1", "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-2", "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"catalogId": "dtp-ipv-2", "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-2", "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-3", "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"catalogId": "dtp-ipv-3", "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-3", "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "dtp-ipv-4", "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"catalogId": "dtp-ipv-5", "member": "lalynn", "dateGiven": "2027-12-18", "note": "", "cost": null}, {"catalogId": "hib-1", "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"catalogId": "hib-1", "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-1", "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-2", "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"catalogId": "hib-2", "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-2", "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-3", "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"catalogId": "hib-3", "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-3", "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "hib-4", "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"catalogId": "pcv-ipd-1", "member": "lalynn", "dateGiven": "2024-02-17", "note": "PCV 15", "cost": null}, {"catalogId": "pcv-ipd-1", "member": "gawynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"catalogId": "pcv-ipd-1", "member": "kanynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"catalogId": "pcv-ipd-2", "member": "lalynn", "dateGiven": "2024-04-20", "note": "PCV 15", "cost": null}, {"catalogId": "pcv-ipd-2", "member": "gawynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"catalogId": "pcv-ipd-2", "member": "kanynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"catalogId": "pcv-ipd-3", "member": "lalynn", "dateGiven": "2024-12-14", "note": "PCV 15", "cost": null}, {"catalogId": "pcv-ipd-3", "member": "gawynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"catalogId": "pcv-ipd-3", "member": "kanynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"catalogId": "pcv-ipd-4", "member": "gawynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"catalogId": "pcv-ipd-4", "member": "kanynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"catalogId": "rota-vaccine-1", "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"catalogId": "rota-vaccine-1", "member": "gawynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"catalogId": "rota-vaccine-1", "member": "kanynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"catalogId": "rota-vaccine-2", "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"catalogId": "rota-vaccine-2", "member": "gawynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"catalogId": "rota-vaccine-2", "member": "kanynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"catalogId": "japanese-encephalitis-je-1", "member": "lalynn", "dateGiven": "2024-09-14", "note": "", "cost": null}, {"catalogId": "japanese-encephalitis-je-1", "member": "gawynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "japanese-encephalitis-je-1", "member": "kanynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "japanese-encephalitis-je-2", "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"catalogId": "mmr-1", "member": "lalynn", "dateGiven": "2024-12-14", "note": "", "cost": null}, {"catalogId": "mmr-1", "member": "gawynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "mmr-1", "member": "kanynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"catalogId": "mmr-2", "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"catalogId": "varicella-1", "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"catalogId": "varicella-2", "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"catalogId": "hepatitis-a-hav-1", "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"catalogId": "hepatitis-a-hav-2", "member": "lalynn", "dateGiven": "2026-03-23", "note": "", "cost": null}, {"catalogId": "ev71-1", "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"catalogId": "ev71-1", "member": "gawynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"catalogId": "ev71-1", "member": "kanynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"catalogId": "ev71-2", "member": "lalynn", "dateGiven": "2025-03-15", "note": "", "cost": null}, {"catalogId": "ev71-2", "member": "gawynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"catalogId": "ev71-2", "member": "kanynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"catalogId": "menb-1", "member": "lalynn", "dateGiven": "2026-04-25", "note": "MenB", "cost": 7600.0}, {"catalogId": "menb-1", "member": "gawynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"catalogId": "menb-1", "member": "kanynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"catalogId": "menb-2", "member": "lalynn", "dateGiven": "2026-06-27", "note": "MenB", "cost": null}, {"catalogId": "menb-2", "member": "gawynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"catalogId": "menb-2", "member": "kanynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"catalogId": "menb-3", "member": "gawynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"catalogId": "menb-3", "member": "kanynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"catalogId": "rabies-1", "member": "lalynn", "dateGiven": "2026-05-16", "note": "", "cost": 604.0}, {"catalogId": "rabies-2", "member": "lalynn", "dateGiven": "2026-05-23", "note": "", "cost": 604.0}, {"catalogId": "dengue-fever-1", "member": "lalynn", "dateGiven": "2027-12-18", "note": "Dengue fever", "cost": 4900.0}, {"catalogId": "influenza-y1-1-1", "member": "lalynn", "dateGiven": "2024-07-20", "note": "", "cost": null}, {"catalogId": "influenza-y1-1-1", "member": "gawynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"catalogId": "influenza-y1-1-1", "member": "kanynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"catalogId": "influenza-y1-2-1", "member": "lalynn", "dateGiven": "2024-08-17", "note": "", "cost": null}, {"catalogId": "influenza-y1-2-1", "member": "gawynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"catalogId": "influenza-y1-2-1", "member": "kanynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"catalogId": "influenza-y2-1", "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"catalogId": "influenza-y3-1", "member": "lalynn", "dateGiven": "2026-04-25", "note": "", "cost": 352.0}, {"catalogId": "influenza-y4-1", "member": "lalynn", "dateGiven": "2027-04-24", "note": "", "cost": null}, {"catalogId": "rsv-1", "member": "gawynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}, {"catalogId": "rsv-1", "member": "kanynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}];
+const DENTIST_RECORDS_SEED = [{"member": "lalynn", "date": "2025-01-26", "milk": 13.0, "permanent": null, "decayed": null}, {"member": "lalynn", "date": "2025-07-27", "milk": 16.0, "permanent": null, "decayed": null}, {"member": "lalynn", "date": "2026-01-25", "milk": 20.0, "permanent": null, "decayed": null}];
+
+let members = [];
+let children = [];
+let vaccineCatalog = [];
+let vaccineRecords = [];
+let dentistRecords = [];
+let selectedDentistChild = null;
+
+function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function fmtDateStr(iso) { return iso ? new Date(iso + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function memberLabel(memberKey) {
+  const m = members.find(x => x.key === memberKey);
+  return m ? m.label : '';
+}
+function childLabel(child) {
+  const lbl = memberLabel(child.memberKey);
+  return lbl || (child.slug.charAt(0).toUpperCase() + child.slug.slice(1)) + ' (ยังไม่เชื่อมโยง)';
+}
+function calcAge(birthISO, eventISO) {
+  if (!birthISO || !eventISO) return '';
+  const b = new Date(birthISO + 'T00:00:00'), e = new Date(eventISO + 'T00:00:00');
+  if (isNaN(b) || isNaN(e) || e < b) return '';
+  let y = e.getFullYear() - b.getFullYear();
+  let m = e.getMonth() - b.getMonth();
+  let d = e.getDate() - b.getDate();
+  if (d < 0) { m--; d += new Date(e.getFullYear(), e.getMonth(), 0).getDate(); }
+  if (m < 0) { y--; m += 12; }
+  const parts = [];
+  if (y > 0) parts.push(y + 'Y');
+  if (m > 0) parts.push(m + 'M');
+  if (d > 0 || parts.length === 0) parts.push(d + 'D');
+  return parts.join('');
+}
+
+async function saveChildren() { try { await window.storage.set(CHILDREN_KEY, JSON.stringify(children)); } catch (e) { console.error(e); } }
+async function saveVaccineCatalog() { try { await window.storage.set(VACCINE_CATALOG_KEY, JSON.stringify(vaccineCatalog)); } catch (e) { console.error(e); } }
+async function saveVaccineRecords() { try { await window.storage.set(VACCINE_RECORDS_KEY, JSON.stringify(vaccineRecords)); } catch (e) { console.error(e); } }
+async function saveDentistRecords() { try { await window.storage.set(DENTIST_RECORDS_KEY, JSON.stringify(dentistRecords)); } catch (e) { console.error(e); } }
+
+async function load() {
+  try { const r = await window.storage.get(MEMBERS_KEY); members = r ? JSON.parse(r.value) : []; } catch (e) { members = []; }
+  try { const r = await window.storage.get(CHILDREN_KEY); children = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultChildren(); } catch (e) { children = defaultChildren(); }
+  try { const r = await window.storage.get(VACCINE_CATALOG_KEY); vaccineCatalog = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultVaccineCatalog(); } catch (e) { vaccineCatalog = defaultVaccineCatalog(); }
+  try { const r = await window.storage.get(VACCINE_RECORDS_KEY); vaccineRecords = r ? JSON.parse(r.value) : defaultVaccineRecords(); } catch (e) { vaccineRecords = defaultVaccineRecords(); }
+  try { const r = await window.storage.get(DENTIST_RECORDS_KEY); dentistRecords = r ? JSON.parse(r.value) : defaultDentistRecords(); } catch (e) { dentistRecords = defaultDentistRecords(); }
+
+  // ถ้ายังไม่เคยมี children ที่บันทึกไว้เลย (ครั้งแรกสุด) ให้บันทึกค่าตั้งต้นกลับไปด้วย
+  try {
+    const r = await window.storage.get(CHILDREN_KEY);
+    if (!r) await saveChildren();
+    const r2 = await window.storage.get(VACCINE_CATALOG_KEY);
+    if (!r2) await saveVaccineCatalog();
+    const r3 = await window.storage.get(VACCINE_RECORDS_KEY);
+    if (!r3) await saveVaccineRecords();
+    const r4 = await window.storage.get(DENTIST_RECORDS_KEY);
+    if (!r4) await saveDentistRecords();
+  } catch (e) { console.error(e); }
+
+  if (!selectedDentistChild && children.length) selectedDentistChild = children[0].slug;
+  document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+  render();
+}
+
+function renderSetupBanner() {
+  const wrap = document.getElementById('setup-banner');
+  const unmapped = children.filter(c => !c.memberKey);
+  if (!unmapped.length) { wrap.innerHTML = ''; return; }
+  wrap.innerHTML = `<div class="banner">⚠️ ยังไม่ได้เชื่อมโยงลูก ${unmapped.length} คนกับรายชื่อสมาชิก — <a href="#" id="banner-setup-link">ไปตั้งค่า</a></div>`;
+  document.getElementById('banner-setup-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelector('.page-tab[data-page="setup"]').click();
+  });
+}
+
+function renderVaccineTable() {
+  const table = document.getElementById('vaccine-table');
+  const todayISO = toISO(new Date());
+  let html = '<thead><tr><th>วัคซีน</th><th>ช่วงอายุแนะนำ</th>';
+  children.forEach(c => { html += `<th>${childLabel(c)}</th>`; });
+  html += '</tr></thead><tbody>';
+  vaccineCatalog.forEach(cat => {
+    html += `<tr><td class="namecell"><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></td><td>${cat.recommendedAge || ''}</td>`;
+    children.forEach(c => {
+      const rec = vaccineRecords.find(r => r.catalogId === cat.id && r.member === c.slug);
+      if (rec && rec.dateGiven) {
+        const isFuture = rec.dateGiven > todayISO;
+        const age = calcAge(c.birthDate, rec.dateGiven);
+        html += `<td class="${isFuture ? 'cell-planned' : 'cell-given'}" data-cat="${cat.id}" data-child="${c.slug}">${fmtDateStr(rec.dateGiven)}${age ? ' <span class="muted">(' + age + ')</span>' : ''}${rec.note ? `<span class="cell-note">${rec.note}</span>` : ''}${rec.cost != null ? `<span class="cell-note">${fmt(rec.cost)}</span>` : ''}</td>`;
+      } else {
+        html += `<td class="cell-empty" data-cat="${cat.id}" data-child="${c.slug}">— ยังไม่บันทึก —</td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+  table.querySelectorAll('td[data-cat]').forEach(td => {
+    td.addEventListener('click', () => editVaccineRecord(td.dataset.cat, td.dataset.child));
+  });
+}
+
+async function editVaccineRecord(catalogId, childSlug) {
+  const existing = vaccineRecords.find(r => r.catalogId === catalogId && r.member === childSlug);
+  const dateInput = window.prompt('วันที่ฉีด (รูปแบบ YYYY-MM-DD) — ถ้าเป็นวันในอนาคตจะถือว่าเป็นแผนที่วางไว้\nปล่อยว่างแล้วกดตกลงเพื่อ "ลบ" รายการนี้ทิ้ง', existing ? existing.dateGiven : toISO(new Date()));
+  if (dateInput === null) return;
+  const trimmed = dateInput.trim();
+  if (!trimmed) {
+    vaccineRecords = vaccineRecords.filter(r => !(r.catalogId === catalogId && r.member === childSlug));
+    await saveVaccineRecords(); render();
+    return;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) { alert('รูปแบบวันที่ไม่ถูกต้อง ต้องเป็น YYYY-MM-DD เช่น 2026-09-23'); return; }
+  const note = window.prompt('หมายเหตุ (ไม่บังคับ)', existing ? (existing.note || '') : '') || '';
+  const costStr = window.prompt('ค่าใช้จ่าย เป็นตัวเลข บาท (ไม่บังคับ ปล่อยว่างได้)', existing && existing.cost != null ? String(existing.cost) : '');
+  const cost = costStr && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
+  vaccineRecords = vaccineRecords.filter(r => !(r.catalogId === catalogId && r.member === childSlug));
+  vaccineRecords.push({ catalogId, member: childSlug, dateGiven: trimmed, note, cost });
+  await saveVaccineRecords(); render();
+}
+
+function renderDentistTab() {
+  const tabsWrap = document.getElementById('dentist-child-tabs');
+  tabsWrap.innerHTML = '';
+  if (!children.length) { tabsWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลลูก ไปที่แท็บ "ตั้งค่า" ก่อน</p>'; document.getElementById('dentist-list').innerHTML = ''; return; }
+  children.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'child-tab' + (selectedDentistChild === c.slug ? ' active' : '');
+    btn.textContent = childLabel(c);
+    btn.addEventListener('click', () => { selectedDentistChild = c.slug; render(); });
+    tabsWrap.appendChild(btn);
+  });
+
+  const listWrap = document.getElementById('dentist-list');
+  listWrap.innerHTML = '';
+  const child = children.find(c => c.slug === selectedDentistChild);
+  const list = dentistRecords.filter(r => r.member === selectedDentistChild).sort((a, b) => b.date.localeCompare(a.date));
+  if (!list.length) { listWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการพบหมอฟัน</p>'; return; }
+  list.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'visit-card';
+    const age = child ? calcAge(child.birthDate, r.date) : '';
+    div.innerHTML = `<div class="row-between">
+        <span>${fmtDateStr(r.date)}${age ? ' <span class="muted">(อายุ ' + age + ')</span>' : ''}</span>
+        <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0;">
+        ${r.milk != null ? 'ฟันน้ำนม ' + r.milk + ' ซี่ · ' : ''}${r.permanent != null ? 'ฟันแท้ ' + r.permanent + ' ซี่ · ' : ''}${r.decayed != null ? 'ฟันผุ ' + r.decayed + ' ซี่' : ''}
+      </p>`;
+    listWrap.appendChild(div);
+  });
+  listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    dentistRecords = dentistRecords.filter(r => r.id !== btn.dataset.del);
+    await saveDentistRecords(); render();
+  }));
+}
+
+function refreshChildMemberSelect(sel) {
+  sel.innerHTML = '';
+  members.forEach(m => sel.appendChild(new Option(m.label, m.key)));
+}
+
+function renderChildrenSetup() {
+  const wrap = document.getElementById('children-setup');
+  wrap.innerHTML = '';
+  if (!members.length) {
+    wrap.innerHTML = '<p class="empty">ยังไม่พบรายชื่อสมาชิก — ตรวจสอบว่ารหัสครัวเรือนตรงกับแอปงบประมาณ และมีการตั้งชื่อสมาชิกไว้แล้ว</p>';
+    return;
+  }
+  children.forEach((c, idx) => {
+    const row = document.createElement('div');
+    row.className = 'setup-row';
+    const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === c.memberKey ? 'selected' : ''}>${m.label}</option>`).join('');
+    row.innerHTML = `
+      <span>${c.slug}</span>
+      <select class="cs-member">${memberOptions}</select>
+      <input type="date" class="cs-birth" value="${c.birthDate || ''}">
+    `;
+    wrap.appendChild(row);
+    row.querySelector('.cs-member').addEventListener('change', async (e) => {
+      children[idx].memberKey = e.target.value;
+      await saveChildren(); render();
+    });
+    row.querySelector('.cs-birth').addEventListener('change', async (e) => {
+      children[idx].birthDate = e.target.value;
+      await saveChildren(); render();
+    });
+  });
+}
+
+function render() {
+  renderSetupBanner();
+  renderVaccineTable();
+  renderDentistTab();
+  renderChildrenSetup();
+}
+
+document.querySelectorAll('.page-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.page-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + btn.dataset.page).classList.add('active');
+  });
+});
+
+const vcNameEn = document.getElementById('vc-nameEn');
+const vcNameTh = document.getElementById('vc-nameTh');
+const vcAge = document.getElementById('vc-age');
+document.getElementById('vc-add').addEventListener('click', async () => {
+  const nameEn = vcNameEn.value.trim();
+  if (!nameEn) return;
+  vaccineCatalog.push({ id: genId(), nameEn, nameTh: vcNameTh.value.trim(), recommendedAge: vcAge.value.trim() });
+  vcNameEn.value = ''; vcNameTh.value = ''; vcAge.value = '';
+  await saveVaccineCatalog(); render();
+});
+
+document.getElementById('dt-add').addEventListener('click', async () => {
+  if (!selectedDentistChild) return;
+  const dateInput = document.getElementById('dt-date');
+  const milkInput = document.getElementById('dt-milk');
+  const permInput = document.getElementById('dt-permanent');
+  const decayInput = document.getElementById('dt-decayed');
+  if (!dateInput.value) return;
+  dentistRecords.push({
+    id: genId(),
+    member: selectedDentistChild,
+    date: dateInput.value,
+    milk: milkInput.value !== '' ? parseInt(milkInput.value, 10) : null,
+    permanent: permInput.value !== '' ? parseInt(permInput.value, 10) : null,
+    decayed: decayInput.value !== '' ? parseInt(decayInput.value, 10) : null
+  });
+  dateInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = '';
+  await saveDentistRecords(); render();
+});
+
+const chMemberSelect = document.getElementById('ch-member');
+document.getElementById('ch-add').addEventListener('click', async () => {
+  const slugInput = document.getElementById('ch-slug');
+  const birthInput = document.getElementById('ch-birth');
+  const slug = slugInput.value.trim().toLowerCase().replace(/\s+/g, '-');
+  if (!slug) return;
+  if (children.some(c => c.slug === slug)) { alert('มีชื่อนี้อยู่แล้ว'); return; }
+  children.push({ slug, memberKey: chMemberSelect.value || '', birthDate: birthInput.value || '' });
+  slugInput.value = ''; birthInput.value = '';
+  await saveChildren(); render();
+});
+
+(function initAuthGate() {
+  var overlay = document.getElementById('login-overlay');
+  var msgEl = document.getElementById('login-message');
+  var btn = document.getElementById('google-signin-btn');
+  var __loaded = false;
+
+  function showLogin(message) { if (msgEl) msgEl.textContent = message || ''; if (overlay) overlay.style.display = 'flex'; }
+  function hideLogin() { if (overlay) overlay.style.display = 'none'; }
+
+  btn.addEventListener('click', function() {
+    if (msgEl) msgEl.textContent = '';
+    __auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()).catch(function(err) {
+      console.error(err);
+      showLogin('เข้าสู่ระบบไม่สำเร็จ ลองใหม่อีกครั้ง');
+    });
+  });
+
+  __auth.onAuthStateChanged(async function(user) {
+    if (!user) { hideLogin(); showLogin(''); return; }
+    try {
+      await __db.collection('households').doc(window.HOUSEHOLD_ID).collection('data').doc(MEMBERS_KEY).get();
+      hideLogin();
+      if (!__loaded) {
+        __loaded = true;
+        const r = await window.storage.get(MEMBERS_KEY);
+        const m = r ? JSON.parse(r.value) : [];
+        refreshChildMemberSelect(chMemberSelect);
+        await load();
+        refreshChildMemberSelect(chMemberSelect);
+      }
+    } catch (e) {
+      await __auth.signOut();
+      showLogin('บัญชี ' + user.email + ' ไม่ได้รับอนุญาตให้เข้าใช้งานระบบนี้');
+    }
+  });
+})();
+</script>
+</body>
+</html>
