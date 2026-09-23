@@ -179,6 +179,7 @@
   <nav class="page-tabs">
     <button class="page-tab active" data-page="vaccine">วัคซีน</button>
     <button class="page-tab" data-page="dentist">ทันตกรรม</button>
+    <button class="page-tab" data-page="expenses">ค่าใช้จ่าย</button>
     <button class="page-tab" data-page="setup">ตั้งค่า</button>
   </nav>
 
@@ -218,6 +219,17 @@
           <input type="number" id="dt-decayed" placeholder="ฟันผุ (ซี่)" min="0">
           <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน</button>
         </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="page-expenses" class="page">
+    <section>
+      <div class="card">
+        <h2>ค่าใช้จ่ายวัคซีน</h2>
+        <p class="muted" style="margin:0 0 10px;">รวมค่าใช้จ่ายที่บันทึกไว้ในแต่ละเข็ม — ถ้าฉีดหลายวัคซีนพร้อมกันในวันเดียวกันและใส่หมายเหตุเดียวกันไว้ (เช่น "Kid Vaccine2") ระบบจะรวมเป็นก้อนเดียวกันให้อัตโนมัติ</p>
+        <div id="expenses-summary" style="margin-bottom:14px;"></div>
+        <div id="expenses-list"></div>
       </div>
     </section>
   </div>
@@ -527,6 +539,14 @@ function doseScheduleLabel(dose) {
   return 'ไม่ระบุ';
 }
 
+function doseSubLabel(age) {
+  return age ? '(' + age + ')' : '';
+}
+
+function nameCellHtml(cat, rowspan) {
+  return `<td class="namecell"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''}><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td>`;
+}
+
 function renderVaccineTable() {
   const table = document.getElementById('vaccine-table');
   const todayISO = toISO(new Date());
@@ -534,31 +554,34 @@ function renderVaccineTable() {
   children.forEach(c => { html += `<th>${childLabel(c)}</th>`; });
   html += '</tr></thead><tbody>';
   vaccineCatalog.forEach(cat => {
-    const scheduleHtml = cat.repeatable
-      ? (cat.ageLabel || cat.recommendedAge || '')
-      : (cat.doses || []).map(d => `${d.label}: ${doseScheduleLabel(d)}`).join('<br>');
-    html += `<tr><td class="namecell"><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td><td style="font-size:12px;">${scheduleHtml}</td>`;
-    children.forEach(c => {
-      if (cat.repeatable) {
+    if (cat.repeatable) {
+      html += `<tr>${nameCellHtml(cat, 1)}<td style="font-size:12px;">${cat.ageLabel || cat.recommendedAge || ''}</td>`;
+      children.forEach(c => {
         const recs = vaccineRecords.filter(r => r.planId === cat.id && r.member === c.slug).sort((a, b) => a.dateGiven.localeCompare(b.dateGiven));
         let cellHtml = '';
         recs.forEach(rec => {
           const isFuture = rec.dateGiven > todayISO;
           const age = calcAge(c.birthDate, rec.dateGiven);
-          const sub = [age ? 'อายุ ' + age : '', rec.note || '', rec.cost != null ? fmt(rec.cost) : ''].filter(Boolean).join(' · ');
-          cellHtml += `<span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-recid="${rec.id}">${fmtDateStr(rec.dateGiven)}${sub ? `<span class="chip-sub">${sub}</span>` : ''}</span>`;
+          const sub = doseSubLabel(age);
+          cellHtml += `<span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-recid="${rec.id}">${fmtDateStr(rec.dateGiven)}${sub ? ` <span class="chip-sub">${sub}</span>` : ''}</span>`;
         });
         cellHtml += `<span class="chip chip-empty" data-addplan="${cat.id}" data-addchild="${c.slug}">+ เพิ่มเข็ม</span>`;
         html += `<td>${cellHtml}</td>`;
-      } else {
-        let cellHtml = '';
-        (cat.doses || []).forEach(dose => {
+      });
+      html += '</tr>';
+    } else {
+      const doses = cat.doses || [];
+      doses.forEach((dose, doseIdx) => {
+        html += '<tr>';
+        if (doseIdx === 0) html += nameCellHtml(cat, doses.length);
+        html += `<td style="font-size:12px;white-space:nowrap;">${dose.label}: ${doseScheduleLabel(dose)}</td>`;
+        children.forEach(c => {
           const rec = vaccineRecords.find(r => r.planId === cat.id && r.doseNumber === dose.doseNumber && r.member === c.slug);
           if (rec && rec.dateGiven) {
             const isFuture = rec.dateGiven > todayISO;
             const age = calcAge(c.birthDate, rec.dateGiven);
-            const sub = [age ? 'อายุ ' + age : '', rec.note || '', rec.cost != null ? fmt(rec.cost) : ''].filter(Boolean).join(' · ');
-            cellHtml += `<span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${dose.label}: ${fmtDateStr(rec.dateGiven)}${sub ? `<span class="chip-sub">${sub}</span>` : ''}</span>`;
+            const sub = doseSubLabel(age);
+            html += `<td><span class="chip ${isFuture ? 'chip-due' : 'chip-given'}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${fmtDateStr(rec.dateGiven)}${sub ? ` <span class="chip-sub">${sub}</span>` : ''}</span></td>`;
           } else {
             const predicted = computeDosePrediction(dose, c.birthDate, cat.id, vaccineRecords, c.slug);
             let chipClass = 'chip-empty', statusText = 'ยังไม่บันทึก';
@@ -566,13 +589,12 @@ function renderVaccineTable() {
               if (predicted <= todayISO) { chipClass = 'chip-overdue'; statusText = 'ควรฉีดแล้ว (~' + fmtDateStr(predicted) + ')'; }
               else { chipClass = 'chip-due'; statusText = 'คาดว่า ~' + fmtDateStr(predicted); }
             }
-            cellHtml += `<span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${dose.label}: ${statusText}</span>`;
+            html += `<td><span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${statusText}</span></td>`;
           }
         });
-        html += `<td>${cellHtml}</td>`;
-      }
-    });
-    html += '</tr>';
+        html += '</tr>';
+      });
+    }
   });
   html += '</tbody>';
   table.innerHTML = html;
@@ -741,10 +763,58 @@ function renderChildrenSetup() {
   });
 }
 
+function renderExpenses() {
+  const summaryEl = document.getElementById('expenses-summary');
+  const listEl = document.getElementById('expenses-list');
+  if (!summaryEl || !listEl) return;
+
+  // จัดกลุ่มก่อน: วัคซีนที่ฉีดพร้อมกัน (คนเดียวกัน + วันเดียวกัน + หมายเหตุเดียวกัน) นับเป็นก้อนเดียว
+  // แล้วรวมทุกเข็มในก้อนนั้นไว้ด้วย แม้เข็มนั้นจะไม่มีราคาของตัวเอง (เพราะราคาอาจถูกใส่ไว้แค่เข็มเดียวในก้อน)
+  const groups = {};
+  vaccineRecords.forEach(r => {
+    if (r.cost == null && !r.note) return; // ไม่มีทั้งราคาและหมายเหตุ ไม่เกี่ยวกับค่าใช้จ่าย ข้ามไป
+    const key = r.member + '|' + r.dateGiven + '|' + (r.note || ('__' + r.id));
+    if (!groups[key]) groups[key] = { member: r.member, date: r.dateGiven, note: r.note || '', items: [], amount: 0 };
+    const cat = vaccineCatalog.find(p => p.id === r.planId);
+    const dose = cat && (cat.doses || []).find(d => d.doseNumber === r.doseNumber);
+    groups[key].items.push({ name: cat ? (cat.nameTh || cat.nameEn) : r.planId, doseLabel: dose ? dose.label : '' });
+    if (r.cost != null) groups[key].amount += r.cost;
+  });
+  const groupList = Object.values(groups).filter(g => g.amount > 0).sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!groupList.length) {
+    summaryEl.innerHTML = '';
+    listEl.innerHTML = '<p class="empty">ยังไม่มีค่าใช้จ่ายที่บันทึกไว้</p>';
+    return;
+  }
+
+  const grandTotal = groupList.reduce((s, g) => s + g.amount, 0);
+  const byChild = {};
+  groupList.forEach(g => { byChild[g.member] = (byChild[g.member] || 0) + g.amount; });
+  const byChildHtml = Object.keys(byChild).map(slug => {
+    const child = children.find(c => c.slug === slug);
+    return `<span class="chip chip-given" style="cursor:default;">${childLabel(child || { slug })}: ${fmt(byChild[slug])}</span>`;
+  }).join(' ');
+  summaryEl.innerHTML = `<p style="margin:0 0 6px;font-size:14px;"><strong>รวมทั้งหมด: ${fmt(grandTotal)}</strong></p><div>${byChildHtml}</div>`;
+
+  listEl.innerHTML = groupList.map(g => {
+    const child = children.find(c => c.slug === g.member);
+    const itemsHtml = g.items.map(it => `<li>${it.name}${it.doseLabel ? ' — ' + it.doseLabel : ''}</li>`).join('');
+    return `<div class="visit-card">
+      <div class="row-between">
+        <span><strong>${fmtDateStr(g.date)}</strong> · ${childLabel(child || { slug: g.member })}${g.note ? ' · ' + g.note : ''}</span>
+        <strong style="color:var(--sage);">${fmt(g.amount)}</strong>
+      </div>
+      <ul class="muted" style="margin:8px 0 0;padding-left:18px;">${itemsHtml}</ul>
+    </div>`;
+  }).join('');
+}
+
 function render() {
   renderSetupBanner();
   renderVaccineTable();
   renderDentistTab();
+  renderExpenses();
   renderChildrenSetup();
 }
 
