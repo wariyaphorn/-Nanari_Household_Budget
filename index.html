@@ -360,6 +360,24 @@
   </section>
 
   <section>
+    <div class="card">
+      <h2>แผนรายจ่ายในอนาคต</h2>
+      <p class="muted" style="margin:0 0 10px;">บันทึกรายจ่ายก้อนใหญ่ที่รู้ล่วงหน้าว่าจะเกิดขึ้น เช่น ค่าฉีดวัคซีน ค่าซื้อรถ เพื่อดูผลกระทบต่อเป้าหมายเงินออมล่วงหน้า</p>
+      <div id="future-expenses"></div>
+      <div class="form-grid g2">
+        <input type="text" id="fe-name" placeholder="ชื่อรายการ เช่น ฉีดวัคซีน">
+        <input type="number" id="fe-amount" placeholder="จำนวนเงิน (บาท)" min="0" step="0.01">
+      </div>
+      <div class="form-grid g2">
+        <input type="month" id="fe-due">
+        <select id="fe-category"></select>
+      </div>
+      <select id="fe-member" style="margin-bottom:8px;"></select>
+      <button class="btn btn-primary" id="fe-add">+ เพิ่มแผนรายจ่าย</button>
+    </div>
+  </section>
+
+  <section>
     <h2>รายจ่ายประจำ (Fix Expense)</h2>
     <div id="fixed-expenses-summary"></div>
     <div id="fixed-expenses"></div>
@@ -863,9 +881,11 @@ const MAINACCOUNTS_KEY = 'household-ledger-mainaccounts';
 const MERCHANT_RULES_KEY = 'household-ledger-merchant-rules';
 const DEFAULT_BULK_WALLET_KEY = 'household-ledger-default-bulk-wallet';
 const BUDGETS_KEY = 'household-ledger-budgets';
+const FUTURE_EXPENSES_KEY = 'household-ledger-future-expenses';
 let defaultBulkWallet = '';
 let merchantRules = [];
 let budgets = []; // { id, category, amount, effectiveFrom: 'YYYY-MM' } — a history of budget changes, not just current values
+let futureExpenses = []; // { id, name, amount, dueMonth: 'YYYY-MM', category, member, occurred }
 let entries = [], goals = [], cards = [], fixedExpenses = [], walletTransactions = [], goalTransfers = [], wallets = [], mainAccounts = [];
 let currentViewMonth = toISO(new Date()).slice(0, 7);
 let ledgerFilter = 'all';
@@ -876,19 +896,22 @@ const memberColors = ['#43705F', '#3B7EA6', '#B8901F', '#7A5FA6', '#B14A34', '#5
 const catSelect = document.getElementById('f-category');
 const xCategorySelect = document.getElementById('x-category');
 function refreshCategorySelects() {
-  const prevF = catSelect.value, prevX = xCategorySelect.value, prevBg = bgCategorySelect.value;
+  const prevF = catSelect.value, prevX = xCategorySelect.value, prevBg = bgCategorySelect.value, prevFe = feCategorySelect.value;
   catSelect.innerHTML = '';
   xCategorySelect.innerHTML = '';
   mrCategorySelect.innerHTML = '';
   bgCategorySelect.innerHTML = '';
+  feCategorySelect.innerHTML = '';
   categories.forEach(c => catSelect.appendChild(new Option(c.label, c.key)));
-  categories.filter(c => c.kind === 'expense').forEach(c => { xCategorySelect.appendChild(new Option(c.label, c.key)); mrCategorySelect.appendChild(new Option(c.label, c.key)); bgCategorySelect.appendChild(new Option(c.label, c.key)); });
+  categories.filter(c => c.kind === 'expense').forEach(c => { xCategorySelect.appendChild(new Option(c.label, c.key)); mrCategorySelect.appendChild(new Option(c.label, c.key)); bgCategorySelect.appendChild(new Option(c.label, c.key)); feCategorySelect.appendChild(new Option(c.label, c.key)); });
   if (categories.some(c => c.key === prevF)) catSelect.value = prevF;
   if (categories.some(c => c.key === prevX && c.kind === 'expense')) xCategorySelect.value = prevX;
   if (categories.some(c => c.key === prevBg && c.kind === 'expense')) bgCategorySelect.value = prevBg;
+  if (categories.some(c => c.key === prevFe && c.kind === 'expense')) feCategorySelect.value = prevFe;
 }
 const mrCategorySelect = document.getElementById('mr-category');
 const bgCategorySelect = document.getElementById('bg-category');
+const feCategorySelect = document.getElementById('fe-category');
 const fMemberGroup = document.getElementById('f-member-group');
 const goalMemberSelect = document.getElementById('g-member');
 const xMemberSelect = document.getElementById('x-member');
@@ -896,6 +919,7 @@ const cOwnerSelect = document.getElementById('c-owner');
 const wOwnerSelect = document.getElementById('w-owner');
 const maOwnerSelect = document.getElementById('ma-owner');
 const mrMemberSelect = document.getElementById('mr-member');
+const feMemberSelect = document.getElementById('fe-member');
 function refreshMemberSelects() {
   const prevChecked = getSelectedMembers();
   fMemberGroup.innerHTML = '';
@@ -905,6 +929,7 @@ function refreshMemberSelects() {
   wOwnerSelect.innerHTML = '';
   maOwnerSelect.innerHTML = '';
   mrMemberSelect.innerHTML = '';
+  feMemberSelect.innerHTML = '';
   members.forEach(m => {
     const label = document.createElement('label');
     label.style.cssText = 'display:flex;align-items:center;gap:4px;font-size:13px;border:1px solid var(--border);border-radius:14px;padding:4px 10px;cursor:pointer;';
@@ -922,6 +947,7 @@ function refreshMemberSelects() {
     wOwnerSelect.appendChild(new Option(m.label, m.key));
     maOwnerSelect.appendChild(new Option(m.label, m.key));
     mrMemberSelect.appendChild(new Option(m.label, m.key));
+    feMemberSelect.appendChild(new Option(m.label, m.key));
   });
 }
 function getSelectedMembers() {
@@ -1150,6 +1176,73 @@ function renderUpcoming() {
       <span class="amt">${fmt(it.amount)}</span>`;
     wrap.appendChild(row);
   });
+}
+
+function monthsBetweenYm(fromYm, toYm) {
+  const [fy, fm] = fromYm.split('-').map(Number);
+  const [ty, tm] = toYm.split('-').map(Number);
+  return (ty - fy) * 12 + (tm - fm);
+}
+function renderFutureExpenses() {
+  const wrap = document.getElementById('future-expenses');
+  wrap.innerHTML = '';
+  if (futureExpenses.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีแผนรายจ่ายในอนาคต เพิ่มรายการแรกด้านล่าง</p>'; return; }
+  const nowYm = toISO(new Date()).slice(0, 7);
+  const pending = futureExpenses.filter(fe => !fe.occurred).sort((a, b) => (a.dueMonth || '').localeCompare(b.dueMonth || ''));
+  const occurred = futureExpenses.filter(fe => fe.occurred).sort((a, b) => (b.dueMonth || '').localeCompare(a.dueMonth || ''));
+
+  if (!pending.length) {
+    wrap.innerHTML = '<p class="empty">ไม่มีแผนรายจ่ายที่ยังไม่เกิดขึ้น</p>';
+  }
+  pending.forEach(fe => {
+    const cat = getCat(fe.category);
+    const monthsLeft = fe.dueMonth ? monthsBetweenYm(nowYm, fe.dueMonth) : null;
+    let badgeColor = 'var(--text-secondary)', badgeText = fe.dueMonth ? monthLabel(fe.dueMonth) : 'ยังไม่ระบุเดือน';
+    if (monthsLeft !== null) {
+      if (monthsLeft < 0) { badgeColor = 'var(--rust)'; badgeText += ' (เลยกำหนด)'; }
+      else if (monthsLeft <= 2) { badgeColor = 'var(--rust)'; badgeText += ' (อีก ' + monthsLeft + ' เดือน)'; }
+      else { badgeText += ' (อีก ' + monthsLeft + ' เดือน)'; }
+    }
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span>${fe.name}${cat ? ' <span class="muted">· ' + cat.label + '</span>' : ''}${fe.member ? ' <span class="muted">· ' + memberLabel(fe.member) + '</span>' : ''}</span><span class="secondary-text">${fmt(fe.amount)}</span></div>
+      <p class="muted" style="margin:0 0 8px;color:${badgeColor};">${badgeText}</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" data-fe-occurred="${fe.id}">✓ เกิดขึ้นแล้ว</button>
+        <button class="btn" data-fe-del="${fe.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
+      </div>`;
+    wrap.appendChild(div);
+  });
+
+  if (occurred.length) {
+    const details = document.createElement('details');
+    details.style.marginTop = '10px';
+    const summary = document.createElement('summary');
+    summary.className = 'muted';
+    summary.style.cursor = 'pointer';
+    summary.textContent = 'ดูรายการที่เกิดขึ้นแล้ว (' + occurred.length + ')';
+    details.appendChild(summary);
+    occurred.forEach(fe => {
+      const cat = getCat(fe.category);
+      const row = document.createElement('div');
+      row.className = 'row-between';
+      row.style.cssText = 'padding:4px 0;font-size:13px;';
+      row.innerHTML = `<span style="text-decoration:line-through;">${fe.name}${cat ? ' · ' + cat.label : ''}${fe.dueMonth ? ' · ' + monthLabel(fe.dueMonth) : ''}</span>
+        <span style="white-space:nowrap;">${fmt(fe.amount)} <button class="del-btn" data-fe-del="${fe.id}" aria-label="ลบ" style="margin-left:6px;">✕</button></span>`;
+      details.appendChild(row);
+    });
+    wrap.appendChild(details);
+  }
+
+  wrap.querySelectorAll('[data-fe-occurred]').forEach(btn => btn.addEventListener('click', async () => {
+    const fe = futureExpenses.find(x => x.id === btn.dataset.feOccurred);
+    if (fe) fe.occurred = true;
+    await saveFutureExpenses(); render();
+  }));
+  wrap.querySelectorAll('[data-fe-del]').forEach(btn => btn.addEventListener('click', async () => {
+    futureExpenses = futureExpenses.filter(x => x.id !== btn.dataset.feDel);
+    await saveFutureExpenses(); render();
+  }));
 }
 
 let editingCardId = null;
@@ -2976,10 +3069,19 @@ function projectGoal(g, months) {
   const remaining = Math.max(0, target - saved);
   const rate = savingsRateForGoal(g, months);
   if (remaining <= 0) return { goal: g, saved, remaining: 0, rate, done: true };
-  if (rate <= 0) return { goal: g, saved, remaining, rate, done: false, monthsNeeded: null, label: null };
+  if (rate <= 0) return { goal: g, saved, remaining, rate, done: false, monthsNeeded: null, label: null, completionYm: null };
   const monthsNeeded = Math.ceil(remaining / rate);
-  const est = new Date(); est.setMonth(est.getMonth() + monthsNeeded);
-  return { goal: g, saved, remaining, rate, done: false, monthsNeeded, label: est.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }) };
+  const completionYm = shiftMonth(toISO(new Date()).slice(0, 7), monthsNeeded);
+  return { goal: g, saved, remaining, rate, done: false, monthsNeeded, label: monthLabel(completionYm), completionYm };
+}
+// รวมยอดแผนรายจ่ายในอนาคต (ที่ยังไม่เกิดขึ้น) ที่คาดว่าจะเกิดขึ้นก่อนวันที่คาดว่าจะครบเป้าหมาย — ใช้เตือนในการ์ดคาดการณ์
+function futureExpenseImpactWarning(completionYm) {
+  if (!completionYm) return '';
+  const nowYm = toISO(new Date()).slice(0, 7);
+  const relevant = (futureExpenses || []).filter(fe => !fe.occurred && fe.dueMonth && fe.dueMonth >= nowYm && fe.dueMonth <= completionYm);
+  if (!relevant.length) return '';
+  const total = relevant.reduce((s, fe) => s + fe.amount, 0);
+  return `<p style="margin:6px 0 0;color:var(--rust);">⚠️ มีแผนรายจ่ายในอนาคตรวม ${fmt(total)} (${relevant.length} รายการ) ที่คาดว่าจะเกิดก่อนถึงเป้าหมาย อาจทำให้ถึงเป้าช้ากว่านี้ — ดูรายละเอียดที่แท็บ "รายจ่ายประจำ"</p>`;
 }
 function goalProjectionHtml(g) {
   if (g.kind === 'debt') return '';
@@ -3005,13 +3107,13 @@ function renderSavingsProjectionOverview() {
     totalSaved += proj.saved; totalTarget += g.target; totalRemaining += proj.remaining; totalRate += Math.max(0, proj.rate);
   });
   const pct = totalTarget > 0 ? Math.min(100, (totalSaved / totalTarget) * 100) : 0;
-  let statusLine;
+  let statusLine, completionYm = null;
   if (totalRemaining <= 0) {
     statusLine = 'ครบทุกเป้าหมายแล้ว 🎉';
   } else if (totalRate > 0) {
     const monthsNeeded = Math.ceil(totalRemaining / totalRate);
-    const est = new Date(); est.setMonth(est.getMonth() + monthsNeeded);
-    statusLine = 'ตามอัตราการเก็บจริงย้อนหลัง ' + savingsProjectionMonths + ' เดือน (เฉลี่ย ' + fmt(totalRate) + '/เดือน) คาดว่าจะครบทุกเป้าหมายประมาณ ' + est.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }) + ' (อีก ' + monthsNeeded + ' เดือน)';
+    completionYm = shiftMonth(toISO(new Date()).slice(0, 7), monthsNeeded);
+    statusLine = 'ตามอัตราการเก็บจริงย้อนหลัง ' + savingsProjectionMonths + ' เดือน (เฉลี่ย ' + fmt(totalRate) + '/เดือน) คาดว่าจะครบทุกเป้าหมายประมาณ ' + monthLabel(completionYm) + ' (อีก ' + monthsNeeded + ' เดือน)';
   } else {
     statusLine = 'ยังไม่มีการเก็บเงินในช่วง ' + savingsProjectionMonths + ' เดือนที่ผ่านมา จึงยังคาดการณ์ไม่ได้ ดูรายละเอียดเพิ่มเติมที่แท็บ "สรุปรายปี"';
   }
@@ -3021,7 +3123,8 @@ function renderSavingsProjectionOverview() {
       <span style="font-weight:600;">${fmt(totalSaved)} / ${fmt(totalTarget)} <span class="muted">(${pct.toFixed(0)}%)</span></span>
     </div>
     <div class="bar-bg" style="margin-bottom:8px;"><div class="bar-fill" style="width:${pct.toFixed(0)}%;"></div></div>
-    <p class="muted" style="margin:0;">${statusLine}</p>`;
+    <p class="muted" style="margin:0;">${statusLine}</p>
+    ${futureExpenseImpactWarning(completionYm)}`;
 }
 function renderSavingsProjectionYearlyDetail() {
   const tabsWrap = document.getElementById('sp-member-tabs');
@@ -3064,13 +3167,13 @@ function renderSavingsProjectionYearlyDetail() {
     return proj;
   });
   const pct = totalTarget > 0 ? Math.min(100, (totalSaved / totalTarget) * 100) : 0;
-  let overallLine;
+  let overallLine, completionYm = null;
   if (totalRemaining <= 0) {
     overallLine = 'ครบทุกเป้าหมายแล้ว 🎉';
   } else if (totalRate > 0) {
     const monthsNeeded = Math.ceil(totalRemaining / totalRate);
-    const est = new Date(); est.setMonth(est.getMonth() + monthsNeeded);
-    overallLine = 'คาดว่าจะครบทุกเป้าหมายประมาณ ' + est.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' }) + ' (อีก ' + monthsNeeded + ' เดือน)';
+    completionYm = shiftMonth(toISO(new Date()).slice(0, 7), monthsNeeded);
+    overallLine = 'คาดว่าจะครบทุกเป้าหมายประมาณ ' + monthLabel(completionYm) + ' (อีก ' + monthsNeeded + ' เดือน)';
   } else {
     overallLine = 'ยังไม่มีการเก็บเงินในช่วง ' + savingsProjectionMonths + ' เดือนที่ผ่านมา จึงยังคาดการณ์ไม่ได้';
   }
@@ -3079,7 +3182,8 @@ function renderSavingsProjectionYearlyDetail() {
       <span style="font-weight:600;">${fmt(totalSaved)} / ${fmt(totalTarget)} <span class="muted">(${pct.toFixed(0)}%)</span></span>
     </div>
     <div class="bar-bg" style="margin-bottom:8px;"><div class="bar-fill" style="width:${pct.toFixed(0)}%;"></div></div>
-    <p class="muted" style="margin:0;">${overallLine} · เฉลี่ยเก็บได้จริง ${fmt(totalRate)}/เดือน (ย้อนหลัง ${savingsProjectionMonths} เดือน)</p>`;
+    <p class="muted" style="margin:0;">${overallLine} · เฉลี่ยเก็บได้จริง ${fmt(totalRate)}/เดือน (ย้อนหลัง ${savingsProjectionMonths} เดือน)</p>
+    ${futureExpenseImpactWarning(completionYm)}`;
 
   listWrap.innerHTML = '';
   details.forEach(proj => {
@@ -3264,6 +3368,7 @@ function render() {
   document.getElementById('updated-note').textContent = 'อัปเดตล่าสุด ' + new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
 
   renderUpcoming();
+  renderFutureExpenses();
   renderMonthlyHistory();
   renderCardsSummary();
   renderCards();
@@ -3303,6 +3408,7 @@ async function saveMerchantRules() { try { await window.storage.set(MERCHANT_RUL
 async function saveDefaultBulkWallet() { try { await window.storage.set(DEFAULT_BULK_WALLET_KEY, JSON.stringify(defaultBulkWallet), true); } catch (e) { console.error(e); } }
 async function saveCategories() { try { await window.storage.set(CATEGORIES_KEY, JSON.stringify(categories), true); } catch (e) { console.error(e); } }
 async function saveBudgets() { try { await window.storage.set(BUDGETS_KEY, JSON.stringify(budgets), true); } catch (e) { console.error(e); } }
+async function saveFutureExpenses() { try { await window.storage.set(FUTURE_EXPENSES_KEY, JSON.stringify(futureExpenses), true); } catch (e) { console.error(e); } }
 
 async function load() {
   let entriesLoadOk = true, goalsLoadOk = true, walletsLoadOk = true, walletTxLoadOk = true, mainAccountsLoadOk = true;
@@ -3359,6 +3465,7 @@ async function load() {
   try { const r = await window.storage.get(DEFAULT_BULK_WALLET_KEY, true); defaultBulkWallet = r ? JSON.parse(r.value) : ''; } catch (e) { defaultBulkWallet = ''; }
   try { const r = await window.storage.get(CATEGORIES_KEY, true); categories = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultCategories(); } catch (e) { categories = defaultCategories(); }
   try { const r = await window.storage.get(BUDGETS_KEY, true); budgets = r ? JSON.parse(r.value) : []; } catch (e) { budgets = []; }
+  try { const r = await window.storage.get(FUTURE_EXPENSES_KEY, true); futureExpenses = r ? JSON.parse(r.value) : []; } catch (e) { futureExpenses = []; }
   refreshCatMap(); refreshCategorySelects();
   refreshMemberMap(); refreshMemberSelects();
 
@@ -3578,6 +3685,28 @@ document.getElementById('bg-add').addEventListener('click', async () => {
   budgets.push({ id: genId(), category, amount, effectiveFrom });
   amountInput.value = '';
   await saveBudgets(); render();
+});
+
+document.getElementById('fe-add').addEventListener('click', async () => {
+  const nameInput = document.getElementById('fe-name');
+  const amountInput = document.getElementById('fe-amount');
+  const dueInput = document.getElementById('fe-due');
+  const name = nameInput.value.trim();
+  const amount = parseFloat(amountInput.value);
+  if (!name || !amount || amount <= 0) return;
+  futureExpenses.push({
+    id: genId(),
+    name,
+    amount,
+    dueMonth: dueInput.value || '',
+    category: feCategorySelect.value,
+    member: feMemberSelect.value,
+    occurred: false
+  });
+  nameInput.value = '';
+  amountInput.value = '';
+  dueInput.value = '';
+  await saveFutureExpenses(); render();
 });
 
 document.getElementById('mr-add').addEventListener('click', async () => {
