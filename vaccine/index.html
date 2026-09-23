@@ -270,7 +270,10 @@
   <div class="modal-card">
     <h3 id="dose-modal-title">บันทึกการฉีดวัคซีน</h3>
     <p class="modal-sub" id="dose-modal-sub"></p>
-    <div class="form-grid">
+    <label id="dm-skip-wrap" style="display:none;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+      <input type="checkbox" id="dm-skip" style="width:auto;"> ไม่ต้องฉีดเข็มนี้สำหรับลูกคนนี้ (ไม่นับเป็นค้างกำหนด)
+    </label>
+    <div class="form-grid" id="dm-fields">
       <div>
         <label class="field-label" for="dm-date">วันที่ฉีด</label>
         <input type="date" id="dm-date">
@@ -626,7 +629,9 @@ function renderVaccineTable() {
         html += `<td style="font-size:12px;white-space:nowrap;">${dose.label}: ${doseScheduleLabel(dose)}</td>`;
         children.forEach(c => {
           const rec = vaccineRecords.find(r => r.planId === cat.id && r.doseNumber === dose.doseNumber && r.member === c.slug);
-          if (rec && rec.dateGiven) {
+          if (rec && rec.skipped) {
+            html += `<td><span class="chip chip-empty" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">ไม่จำเป็นต้องฉีด</span></td>`;
+          } else if (rec && rec.dateGiven) {
             const isFuture = rec.dateGiven > todayISO;
             const age = calcAge(c.birthDate, rec.dateGiven);
             const sub = doseSubLabel(age);
@@ -669,15 +674,25 @@ function planLabel(planId) {
   return p ? (p.nameTh || p.nameEn) : planId;
 }
 
-function fillDoseModal(existing, titleText, subText) {
+function fillDoseModal(existing, titleText, subText, allowSkip) {
   document.getElementById('dose-modal-title').textContent = titleText;
   document.getElementById('dose-modal-sub').textContent = subText;
-  document.getElementById('dm-date').value = existing ? existing.dateGiven : toISO(new Date());
+  document.getElementById('dm-date').value = existing && existing.dateGiven ? existing.dateGiven : toISO(new Date());
   document.getElementById('dm-note').value = existing ? (existing.note || '') : '';
   document.getElementById('dm-cost').value = existing && existing.cost != null ? existing.cost : '';
   document.getElementById('dm-delete').style.display = existing ? 'inline-block' : 'none';
+  const skipWrap = document.getElementById('dm-skip-wrap');
+  const skipBox = document.getElementById('dm-skip');
+  skipWrap.style.display = allowSkip ? 'flex' : 'none';
+  skipBox.checked = !!(existing && existing.skipped);
+  toggleDmSkipFields();
   document.getElementById('dose-modal').style.display = 'flex';
 }
+function toggleDmSkipFields() {
+  const skip = document.getElementById('dm-skip').checked;
+  document.getElementById('dm-fields').style.display = skip ? 'none' : 'grid';
+}
+document.getElementById('dm-skip').addEventListener('change', toggleDmSkipFields);
 function closeDoseModal() {
   document.getElementById('dose-modal').style.display = 'none';
   modalContext = null;
@@ -689,19 +704,19 @@ function openDoseModal(planId, doseNumber, childSlug) {
   const dose = cat && (cat.doses || []).find(d => d.doseNumber === doseNumber);
   modalContext = { mode: 'dose', planId, doseNumber, childSlug };
   const child = children.find(c => c.slug === childSlug);
-  fillDoseModal(existing, `${planLabel(planId)} — ${dose ? dose.label : ''}`, childLabel(child || { slug: childSlug }));
+  fillDoseModal(existing, `${planLabel(planId)} — ${dose ? dose.label : ''}`, childLabel(child || { slug: childSlug }), true);
 }
 function openRepeatAddModal(planId, childSlug) {
   modalContext = { mode: 'repeatAdd', planId, childSlug };
   const child = children.find(c => c.slug === childSlug);
-  fillDoseModal(null, `${planLabel(planId)} — เพิ่มเข็มใหม่`, childLabel(child || { slug: childSlug }));
+  fillDoseModal(null, `${planLabel(planId)} — เพิ่มเข็มใหม่`, childLabel(child || { slug: childSlug }), false);
 }
 function openRepeatEditModal(recordId) {
   const existing = vaccineRecords.find(r => r.id === recordId);
   if (!existing) return;
   modalContext = { mode: 'repeatEdit', recordId };
   const child = children.find(c => c.slug === existing.member);
-  fillDoseModal(existing, `${planLabel(existing.planId)} — แก้ไขเข็ม`, childLabel(child || { slug: existing.member }));
+  fillDoseModal(existing, `${planLabel(existing.planId)} — แก้ไขเข็ม`, childLabel(child || { slug: existing.member }), false);
 }
 
 document.getElementById('dm-cancel').addEventListener('click', closeDoseModal);
@@ -709,15 +724,20 @@ document.getElementById('dose-modal').addEventListener('click', (e) => { if (e.t
 
 document.getElementById('dm-save').addEventListener('click', async () => {
   if (!modalContext) return;
+  const skip = modalContext.mode === 'dose' && document.getElementById('dm-skip').checked;
   const dateVal = document.getElementById('dm-date').value;
-  if (!dateVal) { alert('กรุณาเลือกวันที่'); return; }
+  if (!skip && !dateVal) { alert('กรุณาเลือกวันที่'); return; }
   const note = document.getElementById('dm-note').value.trim();
   const costStr = document.getElementById('dm-cost').value;
   const cost = costStr !== '' && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
 
   if (modalContext.mode === 'dose') {
     vaccineRecords = vaccineRecords.filter(r => !(r.planId === modalContext.planId && r.doseNumber === modalContext.doseNumber && r.member === modalContext.childSlug));
-    vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: modalContext.doseNumber, member: modalContext.childSlug, dateGiven: dateVal, note, cost });
+    if (skip) {
+      vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: modalContext.doseNumber, member: modalContext.childSlug, dateGiven: null, skipped: true, note, cost: null });
+    } else {
+      vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: modalContext.doseNumber, member: modalContext.childSlug, dateGiven: dateVal, note, cost });
+    }
   } else if (modalContext.mode === 'repeatAdd') {
     vaccineRecords.push({ id: genId(), planId: modalContext.planId, doseNumber: null, member: modalContext.childSlug, dateGiven: dateVal, note, cost });
   } else if (modalContext.mode === 'repeatEdit') {
