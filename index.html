@@ -623,7 +623,7 @@
   </section>
 
   <section>
-    <p class="muted" id="code-version" style="text-align:center;">กำลังตรวจสอบเวอร์ชันโค้ด...</p>
+    <p class="muted" id="code-version" style="text-align:center;">เวอร์ชันโค้ด: กำลังตรวจสอบ...</p>
   </section>
   </div>
 
@@ -4293,7 +4293,7 @@ async function loadCodeVersion() {
       el.textContent = label;
       try { sessionStorage.setItem('code-version-cache', label); } catch (e) {}
     } else {
-      el.textContent = '';
+      el.textContent = 'เวอร์ชันโค้ด: ไม่สามารถดึงข้อมูลได้ในขณะนี้';
     }
   } catch (e) {
     console.error(e);
