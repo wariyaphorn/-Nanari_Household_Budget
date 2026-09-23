@@ -3965,7 +3965,7 @@ document.getElementById('export-data').addEventListener('click', () => {
   const backup = {
     exportedAt: new Date().toISOString(),
     entries, goals, cards, fixedExpenses, walletTransactions, goalTransfers,
-    wallets, mainAccounts, merchantRules, members, categories
+    wallets, mainAccounts, merchantRules, members, categories, budgets, futureExpenses
   };
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -3994,7 +3994,9 @@ document.getElementById('import-file').addEventListener('change', async (e) => {
       ['บัตร', (data.cards || []).length],
       ['รายจ่ายประจำ', (data.fixedExpenses || []).length],
       ['กระเป๋าเงิน', (data.wallets || []).length],
-      ['บัญชี', (data.mainAccounts || []).length]
+      ['บัญชี', (data.mainAccounts || []).length],
+      ['งบประมาณ', (data.budgets || []).length],
+      ['แผนรายจ่ายในอนาคต', (data.futureExpenses || []).length]
     ];
     statusEl.textContent = 'ไฟล์นี้มี: ' + counts.map(c => c[0] + ' ' + c[1] + ' รายการ').join(', ');
     document.getElementById('import-confirm').style.display = 'block';
@@ -4023,10 +4025,13 @@ document.getElementById('import-confirm-btn').addEventListener('click', async ()
   merchantRules = data.merchantRules || [];
   members = (data.members && data.members.length) ? data.members : defaultMembers();
   categories = (data.categories && data.categories.length) ? data.categories : defaultCategories();
+  budgets = data.budgets || [];
+  futureExpenses = data.futureExpenses || [];
   refreshCatMap(); refreshMemberMap();
   await saveEntries(); await saveGoals(); await saveCards(); await saveFixedExpenses();
   await saveWalletTransactions(); await saveGoalTransfers(); await saveWallets(); await saveMainAccounts();
   await saveMerchantRules(); await saveMembers(); await saveCategories();
+  await saveBudgets(); await saveFutureExpenses();
   refreshCategorySelects(); refreshMemberSelects(); refreshGoalSelect(); refreshPaymentSelect();
   refreshWalletSelects(); refreshMainAccountSelects(); refreshAccountList(); refreshBillImportSelects();
   pendingImportData = null;
