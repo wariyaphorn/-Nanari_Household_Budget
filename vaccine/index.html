@@ -149,12 +149,17 @@
   .del-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; }
   .del-btn:hover { color: var(--rust); }
   .modal-overlay { position: fixed; inset: 0; z-index: 5000; background: rgba(36,55,58,.45); display: none; align-items: center; justify-content: center; padding: 20px; }
-  .modal-card { background: var(--card); border-radius: 18px; padding: 1.5rem; max-width: 380px; width: 100%; box-shadow: 0 12px 40px rgba(0,0,0,.2); }
+  .modal-card { background: var(--card); border-radius: 18px; padding: 1.5rem; max-width: 380px; width: 100%; max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,.2); }
   .modal-card h3 { font-family: 'Kanit', sans-serif; font-weight: 500; color: var(--ink); margin: 0 0 4px; font-size: 17px; }
   .modal-sub { color: var(--text-secondary); font-size: 12.5px; margin: 0 0 16px; }
   .modal-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 8px; }
   .modal-actions .right-group { display: flex; gap: 8px; }
   label.field-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block; }
+  .type-badge { display: inline-block; font-size: 10.5px; padding: 2px 9px; border-radius: 10px; margin-left: 6px; font-weight: 600; vertical-align: middle; }
+  .type-badge-vaccine { background: #E4F6F2; color: #1F7A6E; }
+  .type-badge-other { background: #EFEAFB; color: #5B4B9E; }
+  .visit-card.clickable { cursor: pointer; }
+  .visit-card.clickable:hover { border-color: var(--sage); }
 </style>
 </head>
 <body>
@@ -226,8 +231,13 @@
   <div id="page-expenses" class="page">
     <section>
       <div class="card">
-        <h2>ค่าใช้จ่ายวัคซีน</h2>
-        <p class="muted" style="margin:0 0 10px;">รวมค่าใช้จ่ายที่บันทึกไว้ในแต่ละเข็ม — ถ้าฉีดหลายวัคซีนพร้อมกันในวันเดียวกันและใส่หมายเหตุเดียวกันไว้ (เช่น "Kid Vaccine2") ระบบจะรวมเป็นก้อนเดียวกันให้อัตโนมัติ</p>
+        <div class="row-between" style="align-items:flex-start;flex-wrap:wrap;gap:10px;">
+          <div>
+            <h2 style="margin-bottom:4px;">ค่าใช้จ่าย</h2>
+            <p class="muted" style="margin:0 0 10px;">รวมค่าใช้จ่ายวัคซีน (คำนวณจากแต่ละเข็มอัตโนมัติ) และค่ารักษา/หาหมออื่นๆ ที่บันทึกเพิ่มเอง — แต่ละรายการมีป้ายกำกับบอกประเภทชัดเจน</p>
+          </div>
+          <button class="btn btn-primary" id="exp-add-open" style="flex-shrink:0;">+ เพิ่มค่ารักษา/หาหมอ</button>
+        </div>
         <div id="expenses-summary" style="margin-bottom:14px;"></div>
         <div id="expenses-list"></div>
       </div>
@@ -244,13 +254,13 @@
     </section>
     <section>
       <div class="card">
-        <h2>เพิ่มลูกคนใหม่</h2>
+        <h2>เพิ่มสมาชิกใหม่</h2>
         <div class="form-grid g3">
           <input type="text" id="ch-slug" placeholder="ชื่อ (ภาษาอังกฤษ ไม่เว้นวรรค) เช่น newborn">
           <select id="ch-member"></select>
           <input type="date" id="ch-birth">
         </div>
-        <button class="btn btn-primary" id="ch-add">+ เพิ่มลูกคนใหม่</button>
+        <button class="btn btn-primary" id="ch-add">+ เพิ่มสมาชิกใหม่</button>
       </div>
     </section>
   </div>
@@ -320,12 +330,45 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="expense-modal">
+  <div class="modal-card">
+    <h3 id="expense-modal-title">บันทึกค่ารักษา/หาหมอ</h3>
+    <p class="modal-sub">สำหรับค่าแพทย์หรือค่าใช้จ่ายตอนลูกเจ็บป่วย (นอกเหนือจากวัคซีน)</p>
+    <div class="form-grid">
+      <div>
+        <label class="field-label" for="em-child">ลูก</label>
+        <select id="em-child"></select>
+      </div>
+      <div>
+        <label class="field-label" for="em-date">วันที่</label>
+        <input type="date" id="em-date">
+      </div>
+      <div>
+        <label class="field-label" for="em-note">รายละเอียด (เช่น เป็นไข้หวัดใหญ่ ไปพบหมอ)</label>
+        <input type="text" id="em-note" placeholder="ไม่บังคับ">
+      </div>
+      <div>
+        <label class="field-label" for="em-cost">ค่าใช้จ่าย (บาท)</label>
+        <input type="number" id="em-cost" placeholder="ไม่บังคับ" min="0">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="em-delete" style="display:none;">ลบรายการ</button>
+      <div class="right-group">
+        <button class="btn" id="em-cancel">ยกเลิก</button>
+        <button class="btn btn-primary" id="em-save">บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 const MEMBERS_KEY = 'household-ledger-members';
 const CHILDREN_KEY = 'vaccine-children';
 const VACCINE_CATALOG_KEY = 'vaccine-catalog';
 const VACCINE_RECORDS_KEY = 'vaccine-records';
 const DENTIST_RECORDS_KEY = 'dentist-records';
+const OTHER_EXPENSES_KEY = 'other-expenses';
 
 const defaultChildren = () => [
   { slug: 'lalynn', memberKey: '', birthDate: '2023-12-14' },
@@ -336,6 +379,7 @@ const defaultChildren = () => [
 const defaultVaccineCatalog = () => VACCINE_CATALOG_SEED;
 const defaultVaccineRecords = () => VACCINE_RECORDS_SEED;
 const defaultDentistRecords = () => DENTIST_RECORDS_SEED;
+const defaultOtherExpenses = () => [];
 
 const VACCINE_CATALOG_SEED = [{"id": "bcg", "nameEn": "BCG", "nameTh": "วัคซีนป้องกันวัณโรค", "doses": [{"doseNumber": 1, "label": "เข็มเดียว", "ageMonths": 0, "ageLabel": "แรกเกิด"}]}, {"id": "hepatitis-b-hbv", "nameEn": "Hepatitis B (HBV)", "nameTh": "วัคซีนป้องกันตับอักเสบบี", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 0, "ageLabel": "แรกเกิด"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 3, "label": "เข็ม 3", "ageMonths": 6, "ageLabel": "6 เดือน"}]}, {"id": "dtp-ipv", "nameEn": "DTP + IPV", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน + โปลิโอ", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 4, "ageLabel": "4 เดือน"}, {"doseNumber": 3, "label": "เข็ม 3", "ageMonths": 6, "ageLabel": "6 เดือน"}, {"doseNumber": 4, "label": "เข็ม 4 (กระตุ้น)", "ageMonths": 18, "ageLabel": "18 เดือน"}, {"doseNumber": 5, "label": "เข็ม 5 (กระตุ้น)", "ageMonths": 48, "ageLabel": "4 ปี"}]}, {"id": "hib", "nameEn": "Hib", "nameTh": "ฮิบ (เยื่อหุ้มสมองอักเสบฮิบ)", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 4, "ageLabel": "4 เดือน"}, {"doseNumber": 3, "label": "เข็ม 3", "ageMonths": 6, "ageLabel": "6 เดือน"}, {"doseNumber": 4, "label": "เข็ม 4", "ageMonths": 18, "ageLabel": "18 เดือน"}]}, {"id": "pcv-ipd", "nameEn": "PCV (IPD)", "nameTh": "นิวโมคอคคัส / ปอดอักเสบ", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 4, "ageLabel": "4 เดือน"}, {"doseNumber": 3, "label": "เข็ม 3", "ageMonths": 6, "ageLabel": "6 เดือน"}, {"doseNumber": 4, "label": "เข็ม 4", "ageMonths": 12, "ageLabel": "12-24 เดือน"}]}, {"id": "rota-vaccine", "nameEn": "Rota Vaccine", "nameTh": "โรต้า (ท้องเสียรุนแรง)", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 4, "ageLabel": "4 เดือน"}]}, {"id": "japanese-encephalitis-je", "nameEn": "Japanese Encephalitis (JE)", "nameTh": "ไข้สมองอักเสบเจอี", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 9, "ageLabel": "9-12 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 12, "ageLabel": "12-18 เดือน"}]}, {"id": "mmr", "nameEn": "MMR", "nameTh": "หัด-คางทูม-หัดเยอรมัน", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 9, "ageLabel": "9-12 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 18, "ageLabel": "18 เดือน - 4 ปี"}]}, {"id": "varicella", "nameEn": "Varicella", "nameTh": "อีสุกอีใส", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 12, "ageLabel": "12 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 18, "ageLabel": "18 เดือน - 4 ปี"}]}, {"id": "hepatitis-a-hav", "nameEn": "Hepatitis A (HAV)", "nameTh": "ตับอักเสบเอ", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 12, "ageLabel": "12-18 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "intervalFromDose": 1, "intervalMonths": 6, "ageLabel": "ห่างจากเข็มแรก 6-12 เดือน"}]}, {"id": "ev71", "nameEn": "EV71", "nameTh": "มือเท้าปาก (สายพันธุ์รุนแรง)", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 6, "ageLabel": "6 เดือน - 5 ปี"}, {"doseNumber": 2, "label": "เข็ม 2", "intervalFromDose": 1, "intervalMonths": 1, "ageLabel": "ห่างจากเข็มแรก 1 เดือน"}]}, {"id": "menb", "nameEn": "MenB", "nameTh": "ไข้กาฬหลังแอ่น B", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 2, "ageLabel": "2 เดือน"}, {"doseNumber": 2, "label": "เข็ม 2", "ageMonths": 4, "ageLabel": "4 เดือน"}, {"doseNumber": 3, "label": "เข็ม 3", "ageMonths": 12, "ageLabel": "12 เดือน"}]}, {"id": "rabies", "nameEn": "Rabies", "nameTh": "พิษสุนัขบ้า", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": null, "ageLabel": "ทุกวัย (ตามความจำเป็น)"}, {"doseNumber": 2, "label": "เข็ม 2", "intervalFromDose": 1, "intervalDays": 7, "ageLabel": "ห่างจากเข็มแรก 7 วัน"}]}, {"id": "dengue-fever", "nameEn": "Dengue fever", "nameTh": "ไข้เลือดออก", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 48, "ageLabel": "4 ปี"}, {"doseNumber": 2, "label": "เข็ม 2", "intervalFromDose": 1, "intervalMonths": 3, "ageLabel": "ห่างจากเข็มแรก 3 เดือน"}]}, {"id": "hpv", "nameEn": "HPV", "nameTh": "ป้องกันมะเร็งปากมดลูก 9 สายพันธ์", "doses": [{"doseNumber": 1, "label": "เข็ม 1", "ageMonths": 108, "ageLabel": "9 ปี"}, {"doseNumber": 2, "label": "เข็ม 2", "intervalFromDose": 1, "intervalMonths": 6, "ageLabel": "ห่างจากเข็มแรก 6-12 เดือน"}]}, {"id": "tdap-tp", "nameEn": "Tdap/TP", "nameTh": "คอตีบ-บาดทะยัก-ไอกรน", "doses": [{"doseNumber": 1, "label": "เข็มเดียว", "ageMonths": 132, "ageLabel": "11-12 ปี"}]}, {"id": "menacwy", "nameEn": "MenACWY", "nameTh": "ไข้กาฬหลังแอ่น 4 สายพันธุ์", "doses": [{"doseNumber": 1, "label": "เข็มเดียว", "ageMonths": 9, "ageLabel": "ตั้งแต่ 9 เดือนขึ้นไป"}]}, {"id": "rsv", "nameEn": "RSV", "nameTh": "Respiratory syncytial virus", "doses": [{"doseNumber": 1, "label": "เข็มเดียว", "ageMonths": null, "ageLabel": "อายุน้อยกว่า 1 ปีควรฉีด"}]}, {"id": "influenza", "nameEn": "Influenza", "nameTh": "ไข้หวัดใหญ่", "repeatable": true, "ageLabel": ">=6 เดือน, ฉีดซ้ำทุกปี"}];
 const VACCINE_RECORDS_SEED = [{"id": "seed-0", "planId": "bcg", "doseNumber": 1, "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"id": "seed-1", "planId": "bcg", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-2", "planId": "bcg", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-3", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"id": "seed-4", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-5", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-6", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-7", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"id": "seed-8", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"id": "seed-9", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-10", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-11", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-12", "planId": "dtp-ipv", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-13", "planId": "dtp-ipv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-14", "planId": "dtp-ipv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-15", "planId": "dtp-ipv", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-16", "planId": "dtp-ipv", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-17", "planId": "dtp-ipv", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-18", "planId": "dtp-ipv", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-19", "planId": "dtp-ipv", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-20", "planId": "dtp-ipv", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-21", "planId": "dtp-ipv", "doseNumber": 4, "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"id": "seed-22", "planId": "dtp-ipv", "doseNumber": 5, "member": "lalynn", "dateGiven": "2027-12-18", "note": "", "cost": null}, {"id": "seed-23", "planId": "hib", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-24", "planId": "hib", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-25", "planId": "hib", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-26", "planId": "hib", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-27", "planId": "hib", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-28", "planId": "hib", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-29", "planId": "hib", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-30", "planId": "hib", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-31", "planId": "hib", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-32", "planId": "hib", "doseNumber": 4, "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"id": "seed-33", "planId": "pcv-ipd", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "PCV 15", "cost": null}, {"id": "seed-34", "planId": "pcv-ipd", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"id": "seed-35", "planId": "pcv-ipd", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"id": "seed-36", "planId": "pcv-ipd", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "PCV 15", "cost": null}, {"id": "seed-37", "planId": "pcv-ipd", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"id": "seed-38", "planId": "pcv-ipd", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"id": "seed-39", "planId": "pcv-ipd", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-12-14", "note": "PCV 15", "cost": null}, {"id": "seed-40", "planId": "pcv-ipd", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"id": "seed-41", "planId": "pcv-ipd", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"id": "seed-42", "planId": "pcv-ipd", "doseNumber": 4, "member": "gawynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"id": "seed-43", "planId": "pcv-ipd", "doseNumber": 4, "member": "kanynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"id": "seed-44", "planId": "rota-vaccine", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-45", "planId": "rota-vaccine", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"id": "seed-46", "planId": "rota-vaccine", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"id": "seed-47", "planId": "rota-vaccine", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-48", "planId": "rota-vaccine", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"id": "seed-49", "planId": "rota-vaccine", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"id": "seed-50", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-09-14", "note": "", "cost": null}, {"id": "seed-51", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-52", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-53", "planId": "japanese-encephalitis-je", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"id": "seed-54", "planId": "mmr", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-12-14", "note": "", "cost": null}, {"id": "seed-55", "planId": "mmr", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-56", "planId": "mmr", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-57", "planId": "mmr", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "seed-58", "planId": "varicella", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"id": "seed-59", "planId": "varicella", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "seed-60", "planId": "hepatitis-a-hav", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"id": "seed-61", "planId": "hepatitis-a-hav", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-03-23", "note": "", "cost": null}, {"id": "seed-62", "planId": "ev71", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"id": "seed-63", "planId": "ev71", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"id": "seed-64", "planId": "ev71", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"id": "seed-65", "planId": "ev71", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-03-15", "note": "", "cost": null}, {"id": "seed-66", "planId": "ev71", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"id": "seed-67", "planId": "ev71", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"id": "seed-68", "planId": "menb", "doseNumber": 1, "member": "lalynn", "dateGiven": "2026-04-25", "note": "MenB", "cost": 7600.0}, {"id": "seed-69", "planId": "menb", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"id": "seed-70", "planId": "menb", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"id": "seed-71", "planId": "menb", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-06-27", "note": "MenB", "cost": null}, {"id": "seed-72", "planId": "menb", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"id": "seed-73", "planId": "menb", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"id": "seed-74", "planId": "menb", "doseNumber": 3, "member": "gawynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"id": "seed-75", "planId": "menb", "doseNumber": 3, "member": "kanynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"id": "seed-76", "planId": "rabies", "doseNumber": 1, "member": "lalynn", "dateGiven": "2026-05-16", "note": "", "cost": 604.0}, {"id": "seed-77", "planId": "rabies", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-05-23", "note": "", "cost": 604.0}, {"id": "seed-78", "planId": "dengue-fever", "doseNumber": 1, "member": "lalynn", "dateGiven": "2027-12-18", "note": "Dengue fever", "cost": 4900.0}, {"id": "flu-la-1", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2024-07-20", "note": "", "cost": null}, {"id": "flu-ga-1", "planId": "influenza", "doseNumber": null, "member": "gawynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"id": "flu-ka-1", "planId": "influenza", "doseNumber": null, "member": "kanynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"id": "flu-la-2", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2024-08-17", "note": "", "cost": null}, {"id": "flu-ga-2", "planId": "influenza", "doseNumber": null, "member": "gawynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"id": "flu-ka-2", "planId": "influenza", "doseNumber": null, "member": "kanynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"id": "flu-la-3", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "flu-la-4", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2026-04-25", "note": "", "cost": 352.0}, {"id": "flu-la-5", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2027-04-24", "note": "", "cost": null}, {"id": "seed-88", "planId": "rsv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}, {"id": "seed-89", "planId": "rsv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}];
@@ -346,6 +390,7 @@ let children = [];
 let vaccineCatalog = [];
 let vaccineRecords = [];
 let dentistRecords = [];
+let otherExpenses = [];
 let selectedDentistChild = null;
 
 function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -381,6 +426,7 @@ async function saveChildren() { try { await window.storage.set(CHILDREN_KEY, JSO
 async function saveVaccineCatalog() { try { await window.storage.set(VACCINE_CATALOG_KEY, JSON.stringify(vaccineCatalog)); } catch (e) { console.error(e); } }
 async function saveVaccineRecords() { try { await window.storage.set(VACCINE_RECORDS_KEY, JSON.stringify(vaccineRecords)); } catch (e) { console.error(e); } }
 async function saveDentistRecords() { try { await window.storage.set(DENTIST_RECORDS_KEY, JSON.stringify(dentistRecords)); } catch (e) { console.error(e); } }
+async function saveOtherExpenses() { try { await window.storage.set(OTHER_EXPENSES_KEY, JSON.stringify(otherExpenses)); } catch (e) { console.error(e); } }
 
 // migration ครั้งเดียว: แปลง catalog/records รูปแบบเก่า (1 แถว = 1 เข็ม แยกกระจาย)
 // ให้เป็น "แผนวัคซีน" ใหม่ (1 วัคซีน มีหลายเข็มในตัวเอง พร้อมกำหนดอายุ/ช่วงเวลาที่แนะนำต่อเข็ม)
@@ -442,6 +488,7 @@ async function load() {
   try { const r = await window.storage.get(VACCINE_CATALOG_KEY); vaccineCatalog = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultVaccineCatalog(); } catch (e) { vaccineCatalog = defaultVaccineCatalog(); }
   try { const r = await window.storage.get(VACCINE_RECORDS_KEY); vaccineRecords = r ? JSON.parse(r.value) : defaultVaccineRecords(); } catch (e) { vaccineRecords = defaultVaccineRecords(); }
   try { const r = await window.storage.get(DENTIST_RECORDS_KEY); dentistRecords = r ? JSON.parse(r.value) : defaultDentistRecords(); } catch (e) { dentistRecords = defaultDentistRecords(); }
+  try { const r = await window.storage.get(OTHER_EXPENSES_KEY); otherExpenses = r ? JSON.parse(r.value) : defaultOtherExpenses(); } catch (e) { otherExpenses = defaultOtherExpenses(); }
 
   // ถ้ายังไม่เคยมี children ที่บันทึกไว้เลย (ครั้งแรกสุด) ให้บันทึกค่าตั้งต้นกลับไปด้วย
   try {
@@ -453,6 +500,8 @@ async function load() {
     if (!r3) await saveVaccineRecords();
     const r4 = await window.storage.get(DENTIST_RECORDS_KEY);
     if (!r4) await saveDentistRecords();
+    const r5 = await window.storage.get(OTHER_EXPENSES_KEY);
+    if (!r5) await saveOtherExpenses();
   } catch (e) { console.error(e); }
 
   await migrateToVaccinePlans();
@@ -780,35 +829,106 @@ function renderExpenses() {
     groups[key].items.push({ name: cat ? (cat.nameTh || cat.nameEn) : r.planId, doseLabel: dose ? dose.label : '' });
     if (r.cost != null) groups[key].amount += r.cost;
   });
-  const groupList = Object.values(groups).filter(g => g.amount > 0).sort((a, b) => b.date.localeCompare(a.date));
+  const vaccineGroupList = Object.values(groups).filter(g => g.amount > 0).map(g => ({ type: 'vaccine', member: g.member, date: g.date, note: g.note, amount: g.amount, items: g.items }));
 
-  if (!groupList.length) {
+  // ค่ารักษา/หาหมออื่นๆ ที่บันทึกเพิ่มเอง (แยกจากวัคซีน แต่แสดงรวมในลิสต์เดียวกัน)
+  const otherList = otherExpenses.map(e => ({ type: 'other', id: e.id, member: e.member, date: e.date, note: e.note || '', amount: e.cost || 0, items: [] }));
+
+  const allList = [...vaccineGroupList, ...otherList].sort((a, b) => b.date.localeCompare(a.date));
+
+  if (!allList.length) {
     summaryEl.innerHTML = '';
     listEl.innerHTML = '<p class="empty">ยังไม่มีค่าใช้จ่ายที่บันทึกไว้</p>';
     return;
   }
 
-  const grandTotal = groupList.reduce((s, g) => s + g.amount, 0);
+  const grandTotal = allList.reduce((s, g) => s + g.amount, 0);
   const byChild = {};
-  groupList.forEach(g => { byChild[g.member] = (byChild[g.member] || 0) + g.amount; });
+  allList.forEach(g => { byChild[g.member] = (byChild[g.member] || 0) + g.amount; });
   const byChildHtml = Object.keys(byChild).map(slug => {
     const child = children.find(c => c.slug === slug);
     return `<span class="chip chip-given" style="cursor:default;">${childLabel(child || { slug })}: ${fmt(byChild[slug])}</span>`;
   }).join(' ');
   summaryEl.innerHTML = `<p style="margin:0 0 6px;font-size:14px;"><strong>รวมทั้งหมด: ${fmt(grandTotal)}</strong></p><div>${byChildHtml}</div>`;
 
-  listEl.innerHTML = groupList.map(g => {
+  listEl.innerHTML = allList.map((g, i) => {
     const child = children.find(c => c.slug === g.member);
-    const itemsHtml = g.items.map(it => `<li>${it.name}${it.doseLabel ? ' — ' + it.doseLabel : ''}</li>`).join('');
-    return `<div class="visit-card">
+    const badge = g.type === 'vaccine'
+      ? '<span class="type-badge type-badge-vaccine">วัคซีน</span>'
+      : '<span class="type-badge type-badge-other">ค่ารักษา/หาหมอ</span>';
+    const itemsHtml = g.items.length ? `<ul class="muted" style="margin:8px 0 0;padding-left:18px;">${g.items.map(it => `<li>${it.name}${it.doseLabel ? ' — ' + it.doseLabel : ''}</li>`).join('')}</ul>` : '';
+    const clickable = g.type === 'other' ? ` clickable" data-expid="${g.id}` : '';
+    return `<div class="visit-card${clickable}">
       <div class="row-between">
-        <span><strong>${fmtDateStr(g.date)}</strong> · ${childLabel(child || { slug: g.member })}${g.note ? ' · ' + g.note : ''}</span>
+        <span><strong>${fmtDateStr(g.date)}</strong> · ${childLabel(child || { slug: g.member })}${badge}${g.note ? ' · ' + g.note : ''}</span>
         <strong style="color:var(--sage);">${fmt(g.amount)}</strong>
       </div>
-      <ul class="muted" style="margin:8px 0 0;padding-left:18px;">${itemsHtml}</ul>
+      ${itemsHtml}
     </div>`;
   }).join('');
+
+  listEl.querySelectorAll('[data-expid]').forEach(el => {
+    el.addEventListener('click', () => openExpenseModal(el.dataset.expid));
+  });
 }
+
+function refreshExpenseChildSelect() {
+  const sel = document.getElementById('em-child');
+  if (!sel) return;
+  sel.innerHTML = '';
+  children.forEach(c => sel.appendChild(new Option(childLabel(c), c.slug)));
+}
+
+let expenseModalContext = null;
+function openExpenseModal(expenseId) {
+  refreshExpenseChildSelect();
+  const existing = expenseId ? otherExpenses.find(e => e.id === expenseId) : null;
+  expenseModalContext = { id: expenseId || null };
+  document.getElementById('expense-modal-title').textContent = existing ? 'แก้ไขค่ารักษา/หาหมอ' : 'บันทึกค่ารักษา/หาหมอ';
+  document.getElementById('em-child').value = existing ? existing.member : (children[0] ? children[0].slug : '');
+  document.getElementById('em-date').value = existing ? existing.date : toISO(new Date());
+  document.getElementById('em-note').value = existing ? (existing.note || '') : '';
+  document.getElementById('em-cost').value = existing && existing.cost != null ? existing.cost : '';
+  document.getElementById('em-delete').style.display = existing ? 'inline-block' : 'none';
+  document.getElementById('expense-modal').style.display = 'flex';
+}
+function closeExpenseModal() {
+  document.getElementById('expense-modal').style.display = 'none';
+  expenseModalContext = null;
+}
+document.getElementById('exp-add-open').addEventListener('click', () => openExpenseModal(null));
+document.getElementById('em-cancel').addEventListener('click', closeExpenseModal);
+document.getElementById('expense-modal').addEventListener('click', (e) => { if (e.target.id === 'expense-modal') closeExpenseModal(); });
+
+document.getElementById('em-save').addEventListener('click', async () => {
+  if (!expenseModalContext) return;
+  const member = document.getElementById('em-child').value;
+  const dateVal = document.getElementById('em-date').value;
+  if (!member) { alert('กรุณาเลือกลูก'); return; }
+  if (!dateVal) { alert('กรุณาเลือกวันที่'); return; }
+  const note = document.getElementById('em-note').value.trim();
+  const costStr = document.getElementById('em-cost').value;
+  const cost = costStr !== '' && !isNaN(parseFloat(costStr)) ? parseFloat(costStr) : null;
+
+  if (expenseModalContext.id) {
+    const rec = otherExpenses.find(e => e.id === expenseModalContext.id);
+    if (rec) { rec.member = member; rec.date = dateVal; rec.note = note; rec.cost = cost; }
+  } else {
+    otherExpenses.push({ id: genId(), member, date: dateVal, note, cost });
+  }
+  await saveOtherExpenses();
+  closeExpenseModal();
+  render();
+});
+
+document.getElementById('em-delete').addEventListener('click', async () => {
+  if (!expenseModalContext || !expenseModalContext.id) return;
+  if (!confirm('ลบรายการนี้?')) return;
+  otherExpenses = otherExpenses.filter(e => e.id !== expenseModalContext.id);
+  await saveOtherExpenses();
+  closeExpenseModal();
+  render();
+});
 
 function render() {
   renderSetupBanner();
