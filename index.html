@@ -186,6 +186,7 @@
     <button class="page-tab" data-page="wallets">กระเป๋า/บัญชี</button>
     <button class="page-tab" data-page="settings">ตั้งค่า</button>
     <button class="page-tab" data-page="entries">บันทึก/รายการ</button>
+    <button class="page-tab" data-page="yearly">สรุปรายปี</button>
   </nav>
 
   <div id="page-overview" class="page active">
@@ -653,6 +654,56 @@
       </div>
       <div id="ledger-summary" class="muted" style="margin:10px 0;font-size:14px;"></div>
       <div id="ledger"></div>
+    </div>
+  </section>
+  </div>
+
+  <div id="page-yearly" class="page">
+  <section>
+    <div class="month-nav" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+      <button class="btn" id="year-prev">◀</button>
+      <span id="year-label" style="font-family:'Kanit';font-weight:500;font-size:16px;color:var(--ink);"></span>
+      <button class="btn" id="year-next">▶</button>
+    </div>
+    <div class="metrics">
+      <div class="metric income"><p class="label">รายรับรวมทั้งปี</p><p class="value" id="y-income">฿0</p></div>
+      <div class="metric expense"><p class="label">รายจ่ายรวมทั้งปี</p><p class="value" id="y-expense">฿0</p></div>
+      <div class="metric"><p class="label">คงเหลือสุทธิทั้งปี</p><p class="value" id="y-balance">฿0</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>รายรับ-รายจ่ายรายเดือน</h2>
+      <div class="chart-box" style="height:280px;"><canvas id="chart-yearly-months"></canvas></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>ตามหมวดหมู่ (ทั้งปี)</h2>
+      <p id="yearly-cat-total" class="muted" style="margin:0 0 10px;"></p>
+      <div class="chart-box"><canvas id="chart-yearly-cat"></canvas></div>
+      <div id="yearly-cat-legend"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>Top 5 เดือนที่ใช้จ่ายเยอะสุด</h2>
+      <div id="yearly-top-months"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สรุปตามคน (ทั้งปี)</h2>
+      <div id="member-tabs-yearly" class="tabs" style="flex-wrap:wrap;"></div>
+      <p id="member-cat-total-yearly" class="muted" style="margin:8px 0 4px;font-weight:600;"></p>
+      <div class="charts">
+        <div class="chart-box"><canvas id="chart-member-cat-yearly"></canvas></div>
+        <div id="member-cat-table-yearly"></div>
+      </div>
     </div>
   </section>
   </div>
@@ -2754,6 +2805,126 @@ function renderCategoryTrend() {
   }
 }
 
+let currentViewYear = new Date().getFullYear();
+let yearlyMonthsChart = null, yearlyCatChart = null;
+function renderYearlySummary() {
+  const yearLabelEl = document.getElementById('year-label');
+  if (yearLabelEl) yearLabelEl.textContent = 'ปี ' + (currentViewYear + 543); // พ.ศ.
+
+  const monthKeys = [];
+  for (let m = 1; m <= 12; m++) monthKeys.push(currentViewYear + '-' + String(m).padStart(2, '0'));
+  const monthFlows = monthKeys.map(ym => cashFlowForMonth(ym));
+
+  const yearIncome = monthFlows.reduce((s, f) => s + f.income, 0);
+  const yearExpense = monthFlows.reduce((s, f) => s + f.expense, 0);
+  document.getElementById('y-income').textContent = fmt(yearIncome);
+  document.getElementById('y-expense').textContent = fmt(yearExpense);
+  const balEl = document.getElementById('y-balance');
+  balEl.textContent = fmt(yearIncome - yearExpense);
+  balEl.style.color = (yearIncome - yearExpense) < 0 ? 'var(--rust)' : 'var(--text-primary)';
+
+  // Bar chart: income vs expense per month
+  if (yearlyMonthsChart) { yearlyMonthsChart.destroy(); yearlyMonthsChart = null; }
+  const monthsCanvas = document.getElementById('chart-yearly-months');
+  if (monthsCanvas) {
+    yearlyMonthsChart = new Chart(monthsCanvas, {
+      type: 'bar',
+      data: {
+        labels: monthKeys.map(ym => monthLabel(ym).split(' ')[0]),
+        datasets: [
+          { label: 'รายรับ', data: monthFlows.map(f => f.income), backgroundColor: '#5C9C82' },
+          { label: 'รายจ่าย', data: monthFlows.map(f => f.expense), backgroundColor: '#B14A34' }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } }
+        },
+        scales: { y: { beginAtZero: true, ticks: { callback: (v) => fmt(v) } } }
+      }
+    });
+  }
+
+  // Category totals + member×category totals for the whole year
+  const catTotals = {}, catMeta = {}, memberCatTotals = {};
+  const goalTypeMeta = {
+    saving: { label: 'เป้าหมาย: เงินออม', color: '#5C9C82' },
+    periodic: { label: 'เป้าหมาย: ออมค่าใช้จ่าย', color: '#B8901F' },
+    debt: { label: 'เป้าหมาย: หนี้', color: '#B14A34' }
+  };
+  entries.filter(e => getCat(e.category).kind === 'expense' && e.date.slice(0, 4) === String(currentViewYear)).forEach(e => {
+    let key;
+    if (e.goal) {
+      const g = goals.find(gg => gg.id === e.goal);
+      const gk = g ? (g.kind === 'debt' ? 'debt' : (g.kind === 'periodic' ? 'periodic' : 'saving')) : (e.category === 'debt' ? 'debt' : 'saving');
+      key = 'goal_' + gk;
+      catMeta[key] = goalTypeMeta[gk];
+    } else {
+      key = e.category;
+      const c = getCat(e.category);
+      catMeta[key] = { label: c.label, color: c.color };
+    }
+    catTotals[key] = (catTotals[key] || 0) + e.amount;
+    const mk = e.member || 'shared';
+    if (!memberCatTotals[mk]) memberCatTotals[mk] = {};
+    memberCatTotals[mk][key] = (memberCatTotals[mk][key] || 0) + e.amount;
+  });
+  const catList = Object.keys(catTotals).map(k => ({ key: k, label: catMeta[k].label, color: catMeta[k].color }));
+  const yearCatTotal = Object.values(catTotals).reduce((s, v) => s + v, 0);
+  document.getElementById('yearly-cat-total').textContent = 'รวมรายจ่ายทั้งปี: ' + fmt(yearCatTotal);
+
+  if (yearlyCatChart) { yearlyCatChart.destroy(); yearlyCatChart = null; }
+  const catCanvas = document.getElementById('chart-yearly-cat');
+  if (catCanvas && catList.length) {
+    yearlyCatChart = new Chart(catCanvas, {
+      type: 'doughnut',
+      data: { labels: catList.map(c => c.label), datasets: [{ data: catList.map(c => catTotals[c.key]), backgroundColor: catList.map(c => c.color), borderWidth: 0 }] },
+      options: {
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const total = ctx.dataset.data.reduce((s, v) => s + v, 0);
+                const pct = total > 0 ? (ctx.parsed / total * 100) : 0;
+                return ctx.label + ': ' + fmt(ctx.parsed) + ' (' + pct.toFixed(0) + '%)';
+              }
+            }
+          }
+        },
+        cutout: '60%'
+      }
+    });
+  }
+  renderChartLegend('yearly-cat-legend', catList, catTotals, item => item.key);
+
+  // Top 5 months by expense
+  const topWrap = document.getElementById('yearly-top-months');
+  topWrap.innerHTML = '';
+  const rankedMonths = monthKeys.map((ym, i) => ({ ym, expense: monthFlows[i].expense }))
+    .filter(m => m.expense > 0)
+    .sort((a, b) => b.expense - a.expense)
+    .slice(0, 5);
+  if (!rankedMonths.length) {
+    topWrap.innerHTML = '<p class="empty">ยังไม่มีรายจ่ายในปีนี้</p>';
+  } else {
+    rankedMonths.forEach((m, i) => {
+      const row = document.createElement('div');
+      row.className = 'row-between';
+      row.style.cssText = 'padding:6px 0;border-bottom:1px solid var(--border);';
+      row.innerHTML = `<span>${i + 1}. ${monthLabel(m.ym)}</span><span style="font-weight:600;">${fmt(m.expense)}</span>`;
+      topWrap.appendChild(row);
+    });
+  }
+
+  // Member breakdown for the year, reusing the same component as the monthly view
+  const memberList = members.filter(m => memberCatTotals[m.key]).map(m => ({ key: m.key, label: m.label, color: m.color }));
+  renderMemberCategoryBreakdown('yearly', memberList, memberCatTotals, catMeta);
+}
+
 let editingEntryId = null;
 
 let ledgerSearch = '';
@@ -2934,6 +3105,7 @@ function render() {
   renderCategoryTrend();
   renderBudgetProgress();
   renderBudgetManager();
+  renderYearlySummary();
   renderLedger();
   renderMembersManager();
   renderCategoryManager();
@@ -3624,6 +3796,15 @@ document.getElementById('month-prev').addEventListener('click', () => {
 document.getElementById('month-next').addEventListener('click', () => {
   currentViewMonth = shiftMonth(currentViewMonth, 1);
   render();
+});
+
+document.getElementById('year-prev').addEventListener('click', () => {
+  currentViewYear -= 1;
+  renderYearlySummary();
+});
+document.getElementById('year-next').addEventListener('click', () => {
+  currentViewYear += 1;
+  renderYearlySummary();
 });
 
 document.getElementById('restore-history-btn').addEventListener('click', () => {
