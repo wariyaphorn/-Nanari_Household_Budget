@@ -188,7 +188,7 @@
     <section>
       <div class="card">
         <h2>ตารางวัคซีน</h2>
-        <p class="muted" style="margin:0 0 10px;">คลิกที่แต่ละเข็มเพื่อบันทึก/แก้วันที่ฉีด — สีเขียว = ฉีดแล้ว, สีทอง = ฉีดแล้ว(อนาคต)/คาดว่าจะถึงกำหนด, สีแดง = เลยกำหนดที่ควรฉีดแล้วแต่ยังไม่ได้บันทึก, สีเทา = ยังไม่ถึงกำหนด/ยังไม่บันทึก</p>
+        <p class="muted" style="margin:0 0 10px;">คลิกที่แต่ละเข็มเพื่อบันทึก/แก้วันที่ฉีด — สีเขียว = ฉีดแล้ว, สีทอง = ฉีดแล้ว(อนาคต)/คาดว่าจะถึงกำหนด, สีแดง = เลยกำหนดที่ควรฉีดแล้วแต่ยังไม่ได้บันทึก, สีเทา = ยังไม่ถึงกำหนด/ยังไม่บันทึก · กดไอคอน ✏️ ที่ชื่อวัคซีนเพื่อแก้ไขกำหนดการเอง</p>
         <div class="table-scroll">
           <table class="vtable" id="vaccine-table"></table>
         </div>
@@ -196,13 +196,9 @@
     </section>
     <section>
       <div class="card">
-        <h2>เพิ่มรายการวัคซีนใหม่ในตาราง</h2>
-        <div class="form-grid g3">
-          <input type="text" id="vc-nameEn" placeholder="ชื่อวัคซีน (อังกฤษ)">
-          <input type="text" id="vc-nameTh" placeholder="ชื่อภาษาไทย">
-          <input type="text" id="vc-age" placeholder="ช่วงอายุที่แนะนำ เช่น 2M">
-        </div>
-        <button class="btn btn-primary" id="vc-add">+ เพิ่มรายการวัคซีน</button>
+        <h2>เพิ่มวัคซีนรายการใหม่</h2>
+        <p class="muted" style="margin:0 0 10px;">เพิ่มวัคซีนใหม่พร้อมตั้งจำนวนเข็มและกำหนดการเองได้ทั้งหมด</p>
+        <button class="btn btn-primary" id="vc-add-open">+ เพิ่มวัคซีนใหม่</button>
       </div>
     </section>
   </div>
@@ -271,6 +267,42 @@
       <div class="right-group">
         <button class="btn" id="dm-cancel">ยกเลิก</button>
         <button class="btn btn-primary" id="dm-save">บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="plan-modal">
+  <div class="modal-card" style="max-width:560px;">
+    <h3 id="plan-modal-title">แก้ไขวัคซีน</h3>
+    <p class="modal-sub">ตั้งชื่อและกำหนดการของแต่ละเข็มได้เอง</p>
+    <div class="form-grid g2">
+      <div>
+        <label class="field-label" for="pm-nameEn">ชื่อ (อังกฤษ)</label>
+        <input type="text" id="pm-nameEn" placeholder="เช่น MenB">
+      </div>
+      <div>
+        <label class="field-label" for="pm-nameTh">ชื่อภาษาไทย</label>
+        <input type="text" id="pm-nameTh" placeholder="เช่น ไข้กาฬหลังแอ่น B">
+      </div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);margin:12px 0;">
+      <input type="checkbox" id="pm-repeatable" style="width:auto;"> ฉีดซ้ำได้ไม่จำกัดจำนวนเข็ม (เช่น ไข้หวัดใหญ่ — ไม่ต้องตั้งตารางเข็ม)
+    </label>
+    <div id="pm-repeatable-label-wrap" style="display:none;margin-bottom:10px;">
+      <label class="field-label" for="pm-ageLabel">คำอธิบายกำหนดการ (แสดงในตาราง)</label>
+      <input type="text" id="pm-ageLabel" placeholder="เช่น >=6 เดือน, ฉีดซ้ำทุกปี">
+    </div>
+    <div id="pm-doses-wrap">
+      <label class="field-label">รายการเข็ม</label>
+      <div id="pm-doses-list"></div>
+      <button type="button" class="btn" id="pm-add-dose">+ เพิ่มเข็ม</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger-ghost" id="pm-delete-plan" style="display:none;">ลบวัคซีนนี้</button>
+      <div class="right-group">
+        <button class="btn" id="pm-cancel">ยกเลิก</button>
+        <button class="btn btn-primary" id="pm-save">บันทึก</button>
       </div>
     </div>
   </div>
@@ -488,6 +520,13 @@ function computeDosePrediction(dose, birthDate, planId, records, childSlug) {
   return null;
 }
 
+function doseScheduleLabel(dose) {
+  if (dose.ageLabel) return dose.ageLabel;
+  if (dose.ageMonths != null) return dose.ageMonths + ' เดือน';
+  if (dose.intervalFromDose) return 'ห่างจากเข็ม ' + dose.intervalFromDose + (dose.intervalMonths ? ' ' + dose.intervalMonths + ' เดือน' : (dose.intervalDays ? ' ' + dose.intervalDays + ' วัน' : ''));
+  return 'ไม่ระบุ';
+}
+
 function renderVaccineTable() {
   const table = document.getElementById('vaccine-table');
   const todayISO = toISO(new Date());
@@ -495,7 +534,10 @@ function renderVaccineTable() {
   children.forEach(c => { html += `<th>${childLabel(c)}</th>`; });
   html += '</tr></thead><tbody>';
   vaccineCatalog.forEach(cat => {
-    html += `<tr><td class="namecell"><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></td><td>${cat.ageLabel || cat.recommendedAge || ''}</td>`;
+    const scheduleHtml = cat.repeatable
+      ? (cat.ageLabel || cat.recommendedAge || '')
+      : (cat.doses || []).map(d => `${d.label}: ${doseScheduleLabel(d)}`).join('<br>');
+    html += `<tr><td class="namecell"><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td><td style="font-size:12px;">${scheduleHtml}</td>`;
     children.forEach(c => {
       if (cat.repeatable) {
         const recs = vaccineRecords.filter(r => r.planId === cat.id && r.member === c.slug).sort((a, b) => a.dateGiven.localeCompare(b.dateGiven));
@@ -542,6 +584,9 @@ function renderVaccineTable() {
   });
   table.querySelectorAll('[data-addplan]').forEach(el => {
     el.addEventListener('click', () => openRepeatAddModal(el.dataset.addplan, el.dataset.addchild));
+  });
+  table.querySelectorAll('[data-editplan]').forEach(el => {
+    el.addEventListener('click', () => openPlanEditor(el.dataset.editplan));
   });
 }
 
@@ -712,15 +757,133 @@ document.querySelectorAll('.page-tab').forEach(btn => {
   });
 });
 
-const vcNameEn = document.getElementById('vc-nameEn');
-const vcNameTh = document.getElementById('vc-nameTh');
-const vcAge = document.getElementById('vc-age');
-document.getElementById('vc-add').addEventListener('click', async () => {
-  const nameEn = vcNameEn.value.trim();
-  if (!nameEn) return;
-  vaccineCatalog.push({ id: genId(), nameEn, nameTh: vcNameTh.value.trim(), ageLabel: vcAge.value.trim(), doses: [{ doseNumber: 1, label: 'เข็มเดียว', ageMonths: null }] });
-  vcNameEn.value = ''; vcNameTh.value = ''; vcAge.value = '';
-  await saveVaccineCatalog(); render();
+// --- ตัวแก้ไขแผนวัคซีน (เพิ่ม/แก้ไข/ลบวัคซีนและกำหนดการของแต่ละเข็มเอง) ---
+let planModalContext = null;
+let planModalDoses = [];
+
+document.getElementById('vc-add-open').addEventListener('click', () => openPlanEditor(null));
+
+function openPlanEditor(planId) {
+  const existing = planId ? vaccineCatalog.find(p => p.id === planId) : null;
+  planModalContext = { planId: planId || null };
+  document.getElementById('plan-modal-title').textContent = existing ? 'แก้ไข: ' + existing.nameEn : 'เพิ่มวัคซีนใหม่';
+  document.getElementById('pm-nameEn').value = existing ? existing.nameEn : '';
+  document.getElementById('pm-nameTh').value = existing ? (existing.nameTh || '') : '';
+  document.getElementById('pm-repeatable').checked = existing ? !!existing.repeatable : false;
+  document.getElementById('pm-ageLabel').value = existing ? (existing.ageLabel || '') : '';
+  planModalDoses = existing && existing.doses ? existing.doses.map(d => Object.assign({}, d)) : [{ doseNumber: 1, label: 'เข็ม 1', ageMonths: null, ageLabel: '' }];
+  document.getElementById('pm-delete-plan').style.display = existing ? 'inline-block' : 'none';
+  togglePlanRepeatableUI();
+  renderDoseRows();
+  document.getElementById('plan-modal').style.display = 'flex';
+}
+function closePlanEditor() {
+  document.getElementById('plan-modal').style.display = 'none';
+  planModalContext = null;
+}
+function togglePlanRepeatableUI() {
+  const rep = document.getElementById('pm-repeatable').checked;
+  document.getElementById('pm-doses-wrap').style.display = rep ? 'none' : 'block';
+  document.getElementById('pm-repeatable-label-wrap').style.display = rep ? 'block' : 'none';
+}
+document.getElementById('pm-repeatable').addEventListener('change', togglePlanRepeatableUI);
+document.getElementById('pm-cancel').addEventListener('click', closePlanEditor);
+document.getElementById('plan-modal').addEventListener('click', (e) => { if (e.target.id === 'plan-modal') closePlanEditor(); });
+
+function renderDoseRows() {
+  const wrap = document.getElementById('pm-doses-list');
+  wrap.innerHTML = '';
+  planModalDoses.forEach((d, idx) => {
+    const isInterval = !!d.intervalFromDose;
+    const row = document.createElement('div');
+    row.className = 'dose-row';
+    row.style.cssText = 'border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;';
+    row.innerHTML = `
+      <div class="form-grid g2">
+        <input type="text" class="dr-label" placeholder="ชื่อเข็ม เช่น เข็ม 1" value="${d.label || ''}">
+        <select class="dr-type">
+          <option value="age" ${!isInterval ? 'selected' : ''}>กำหนดจากอายุ (เดือน)</option>
+          <option value="interval" ${isInterval ? 'selected' : ''}>ห่างจากเข็มก่อนหน้า</option>
+        </select>
+      </div>
+      <div class="form-grid g2 dr-age-fields" style="margin-top:6px;${isInterval ? 'display:none;' : ''}">
+        <input type="number" class="dr-ageMonths" placeholder="อายุ (เดือน)" value="${d.ageMonths != null ? d.ageMonths : ''}">
+      </div>
+      <div class="form-grid g2 dr-interval-fields" style="margin-top:6px;${isInterval ? '' : 'display:none;'}">
+        <input type="number" class="dr-intervalFromDose" placeholder="ห่างจากเข็มที่ (หมายเลข)" value="${d.intervalFromDose || ''}">
+        <input type="number" class="dr-intervalMonths" placeholder="ระยะห่าง (เดือน)" value="${d.intervalMonths || ''}">
+      </div>
+      <input type="text" class="dr-ageLabel" placeholder="คำอธิบายที่แสดงในตาราง (ไม่บังคับ ถ้าไม่ใส่จะใช้ตัวเลขข้างบน)" value="${d.ageLabel || ''}" style="margin-top:6px;">
+      <button type="button" class="btn btn-danger-ghost dr-remove" style="margin-top:6px;">✕ ลบเข็มนี้</button>
+    `;
+    wrap.appendChild(row);
+    row.querySelector('.dr-type').addEventListener('change', (e) => {
+      const nowInterval = e.target.value === 'interval';
+      row.querySelector('.dr-age-fields').style.display = nowInterval ? 'none' : 'grid';
+      row.querySelector('.dr-interval-fields').style.display = nowInterval ? 'grid' : 'none';
+    });
+    row.querySelector('.dr-remove').addEventListener('click', () => {
+      planModalDoses.splice(idx, 1);
+      renderDoseRows();
+    });
+  });
+}
+
+document.getElementById('pm-add-dose').addEventListener('click', () => {
+  planModalDoses.push({ doseNumber: planModalDoses.length + 1, label: 'เข็ม ' + (planModalDoses.length + 1), ageMonths: null, ageLabel: '' });
+  renderDoseRows();
+});
+
+document.getElementById('pm-save').addEventListener('click', async () => {
+  const nameEn = document.getElementById('pm-nameEn').value.trim();
+  if (!nameEn) { alert('กรุณากรอกชื่อวัคซีน'); return; }
+  const nameTh = document.getElementById('pm-nameTh').value.trim();
+  const repeatable = document.getElementById('pm-repeatable').checked;
+  const ageLabel = document.getElementById('pm-ageLabel').value.trim();
+
+  let doses = [];
+  if (!repeatable) {
+    const rows = document.querySelectorAll('#pm-doses-list .dose-row');
+    if (!rows.length) { alert('ต้องมีอย่างน้อย 1 เข็ม'); return; }
+    doses = Array.from(rows).map((row, idx) => {
+      const type = row.querySelector('.dr-type').value;
+      const label = row.querySelector('.dr-label').value.trim() || ('เข็ม ' + (idx + 1));
+      const doseAgeLabel = row.querySelector('.dr-ageLabel').value.trim();
+      if (type === 'interval') {
+        const intervalFromDose = parseInt(row.querySelector('.dr-intervalFromDose').value, 10) || null;
+        const intervalMonths = parseFloat(row.querySelector('.dr-intervalMonths').value) || null;
+        return { doseNumber: idx + 1, label, intervalFromDose, intervalMonths, ageLabel: doseAgeLabel };
+      }
+      const ageMonthsVal = row.querySelector('.dr-ageMonths').value;
+      const ageMonths = ageMonthsVal !== '' ? parseFloat(ageMonthsVal) : null;
+      return { doseNumber: idx + 1, label, ageMonths, ageLabel: doseAgeLabel };
+    });
+  }
+
+  const planId = planModalContext.planId || genId();
+  const newPlan = { id: planId, nameEn, nameTh };
+  if (repeatable) { newPlan.repeatable = true; newPlan.ageLabel = ageLabel; }
+  else { newPlan.doses = doses; }
+
+  const idx = vaccineCatalog.findIndex(p => p.id === planId);
+  if (idx >= 0) vaccineCatalog[idx] = newPlan;
+  else vaccineCatalog.push(newPlan);
+
+  await saveVaccineCatalog();
+  closePlanEditor();
+  render();
+});
+
+document.getElementById('pm-delete-plan').addEventListener('click', async () => {
+  if (!planModalContext || !planModalContext.planId) return;
+  if (!confirm('ลบวัคซีนนี้ทั้งหมด? ประวัติการฉีดของวัคซีนนี้ทุกคนจะถูกลบไปด้วย')) return;
+  const planId = planModalContext.planId;
+  vaccineCatalog = vaccineCatalog.filter(p => p.id !== planId);
+  vaccineRecords = vaccineRecords.filter(r => r.planId !== planId);
+  await saveVaccineCatalog();
+  await saveVaccineRecords();
+  closePlanEditor();
+  render();
 });
 
 document.getElementById('dt-add').addEventListener('click', async () => {
