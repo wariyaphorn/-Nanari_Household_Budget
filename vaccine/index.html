@@ -165,6 +165,7 @@
   .type-badge { display: inline-block; font-size: 10.5px; padding: 2px 9px; border-radius: 10px; margin-left: 6px; font-weight: 600; vertical-align: middle; }
   .type-badge-vaccine { background: #E4F6F2; color: #1F7A6E; }
   .type-badge-other { background: #EFEAFB; color: #5B4B9E; }
+  .type-badge-checkup { background: #FFF6D9; color: #8A6D1B; }
   .visit-card.clickable { cursor: pointer; }
   .visit-card.clickable:hover { border-color: var(--sage); }
 </style>
@@ -192,6 +193,7 @@
     <button class="page-tab active" data-page="vaccine">วัคซีน</button>
     <button class="page-tab" data-page="adult-vaccine">วัคซีนผู้ใหญ่</button>
     <button class="page-tab" data-page="dentist">ทันตกรรม</button>
+    <button class="page-tab" data-page="checkup">ตรวจสุขภาพ</button>
     <button class="page-tab" data-page="expenses">ค่าใช้จ่าย</button>
     <button class="page-tab" data-page="setup">ตั้งค่า</button>
   </nav>
@@ -252,6 +254,38 @@
           <input type="number" id="dt-decayed" placeholder="ฟันผุ (ซี่)" min="0">
           <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน</button>
         </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="page-checkup" class="page">
+    <section>
+      <div class="card">
+        <h2>ตรวจสุขภาพ</h2>
+        <p class="muted" style="margin:0 0 10px;">บันทึกการตรวจสุขภาพประจำปี/ตรวจเลือด/เอกซเรย์ ฯลฯ — ถ้าใส่วันนัดครั้งถัดไป จะไปโผล่ในแบนเนอร์แจ้งเตือนด้านบนด้วย</p>
+        <div class="child-tabs" id="checkup-child-tabs"></div>
+        <div id="checkup-list"></div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="chk-date">วันที่ตรวจ</label>
+            <input type="date" id="chk-date">
+          </div>
+          <div>
+            <label class="field-label" for="chk-note">รายละเอียด/รายการที่ตรวจ</label>
+            <input type="text" id="chk-note" placeholder="เช่น ตรวจสุขภาพประจำปี, ตรวจเลือด">
+          </div>
+        </div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="chk-cost">ค่าใช้จ่าย (บาท)</label>
+            <input type="number" id="chk-cost" placeholder="ไม่บังคับ" min="0">
+          </div>
+          <div>
+            <label class="field-label" for="chk-next">วันนัดครั้งถัดไป</label>
+            <input type="date" id="chk-next">
+          </div>
+        </div>
+        <button class="btn btn-primary" id="chk-add" style="margin-top:8px;">+ บันทึกการตรวจสุขภาพ</button>
       </div>
     </section>
   </div>
@@ -432,6 +466,7 @@ const VACCINE_CATALOG_KEY = 'vaccine-catalog';
 const VACCINE_RECORDS_KEY = 'vaccine-records';
 const DENTIST_RECORDS_KEY = 'dentist-records';
 const OTHER_EXPENSES_KEY = 'other-expenses';
+const CHECKUP_RECORDS_KEY = 'checkup-records';
 const ADULTS_KEY = 'vaccine-adults';
 const ADULT_VACCINE_CATALOG_KEY = 'adult-vaccine-catalog';
 
@@ -450,6 +485,7 @@ const defaultVaccineCatalog = () => VACCINE_CATALOG_SEED;
 const defaultVaccineRecords = () => VACCINE_RECORDS_SEED;
 const defaultDentistRecords = () => DENTIST_RECORDS_SEED;
 const defaultOtherExpenses = () => [];
+const defaultCheckupRecords = () => [];
 const defaultAdultVaccineCatalog = () => ADULT_VACCINE_CATALOG_SEED;
 
 const ADULT_VACCINE_CATALOG_SEED = [
@@ -474,7 +510,9 @@ let adultVaccineCatalog = [];
 let vaccineRecords = [];
 let dentistRecords = [];
 let otherExpenses = [];
+let checkupRecords = [];
 let selectedDentistChild = null;
+let selectedCheckupChild = null;
 
 function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -516,6 +554,7 @@ async function saveVaccineCatalog() { try { await window.storage.set(VACCINE_CAT
 async function saveVaccineRecords() { try { await window.storage.set(VACCINE_RECORDS_KEY, JSON.stringify(vaccineRecords)); } catch (e) { console.error(e); } }
 async function saveDentistRecords() { try { await window.storage.set(DENTIST_RECORDS_KEY, JSON.stringify(dentistRecords)); } catch (e) { console.error(e); } }
 async function saveOtherExpenses() { try { await window.storage.set(OTHER_EXPENSES_KEY, JSON.stringify(otherExpenses)); } catch (e) { console.error(e); } }
+async function saveCheckupRecords() { try { await window.storage.set(CHECKUP_RECORDS_KEY, JSON.stringify(checkupRecords)); } catch (e) { console.error(e); } }
 async function saveAdults() { try { await window.storage.set(ADULTS_KEY, JSON.stringify(adults)); } catch (e) { console.error(e); } }
 async function saveAdultVaccineCatalog() { try { await window.storage.set(ADULT_VACCINE_CATALOG_KEY, JSON.stringify(adultVaccineCatalog)); } catch (e) { console.error(e); } }
 
@@ -580,6 +619,7 @@ async function load() {
   try { const r = await window.storage.get(VACCINE_RECORDS_KEY); vaccineRecords = r ? JSON.parse(r.value) : defaultVaccineRecords(); } catch (e) { vaccineRecords = defaultVaccineRecords(); }
   try { const r = await window.storage.get(DENTIST_RECORDS_KEY); dentistRecords = r ? JSON.parse(r.value) : defaultDentistRecords(); } catch (e) { dentistRecords = defaultDentistRecords(); }
   try { const r = await window.storage.get(OTHER_EXPENSES_KEY); otherExpenses = r ? JSON.parse(r.value) : defaultOtherExpenses(); } catch (e) { otherExpenses = defaultOtherExpenses(); }
+  try { const r = await window.storage.get(CHECKUP_RECORDS_KEY); checkupRecords = r ? JSON.parse(r.value) : defaultCheckupRecords(); } catch (e) { checkupRecords = defaultCheckupRecords(); }
   try { const r = await window.storage.get(ADULTS_KEY); adults = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdults(); } catch (e) { adults = defaultAdults(); }
   try { const r = await window.storage.get(ADULT_VACCINE_CATALOG_KEY); adultVaccineCatalog = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdultVaccineCatalog(); } catch (e) { adultVaccineCatalog = defaultAdultVaccineCatalog(); }
 
@@ -599,11 +639,14 @@ async function load() {
     if (!r6) await saveAdults();
     const r7 = await window.storage.get(ADULT_VACCINE_CATALOG_KEY);
     if (!r7) await saveAdultVaccineCatalog();
+    const r8 = await window.storage.get(CHECKUP_RECORDS_KEY);
+    if (!r8) await saveCheckupRecords();
   } catch (e) { console.error(e); }
 
   await migrateToVaccinePlans();
 
-  if (!selectedDentistChild && children.length) selectedDentistChild = children[0].slug;
+  if (!selectedDentistChild && (children.length || adults.length)) selectedDentistChild = (children[0] || adults[0]).slug;
+  if (!selectedCheckupChild && (children.length || adults.length)) selectedCheckupChild = (children[0] || adults[0]).slug;
   render();
 }
 
@@ -919,8 +962,9 @@ document.getElementById('dm-delete').addEventListener('click', async () => {
 function renderDentistTab() {
   const tabsWrap = document.getElementById('dentist-child-tabs');
   tabsWrap.innerHTML = '';
-  if (!children.length) { tabsWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลลูก ไปที่แท็บ "ตั้งค่า" ก่อน</p>'; document.getElementById('dentist-list').innerHTML = ''; return; }
-  children.forEach(c => {
+  const allMembers = [...children, ...adults];
+  if (!allMembers.length) { tabsWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลสมาชิก ไปที่แท็บ "ตั้งค่า" ก่อน</p>'; document.getElementById('dentist-list').innerHTML = ''; return; }
+  allMembers.forEach(c => {
     const btn = document.createElement('button');
     btn.className = 'child-tab' + (selectedDentistChild === c.slug ? ' active' : '');
     btn.textContent = childLabel(c) + currentAgeLabel(c);
@@ -930,7 +974,7 @@ function renderDentistTab() {
 
   const listWrap = document.getElementById('dentist-list');
   listWrap.innerHTML = '';
-  const child = children.find(c => c.slug === selectedDentistChild);
+  const child = findMember(selectedDentistChild);
   const list = dentistRecords.filter(r => r.member === selectedDentistChild).sort((a, b) => b.date.localeCompare(a.date));
   if (!list.length) { listWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการพบหมอฟัน</p>'; return; }
   list.forEach(r => {
@@ -950,6 +994,43 @@ function renderDentistTab() {
     if (!confirm('ลบรายการนี้?')) return;
     dentistRecords = dentistRecords.filter(r => r.id !== btn.dataset.del);
     await saveDentistRecords(); render();
+  }));
+}
+
+function renderCheckupTab() {
+  const tabsWrap = document.getElementById('checkup-child-tabs');
+  if (!tabsWrap) return;
+  tabsWrap.innerHTML = '';
+  const allMembers = [...children, ...adults];
+  if (!allMembers.length) { tabsWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลสมาชิก ไปที่แท็บ "ตั้งค่า" ก่อน</p>'; document.getElementById('checkup-list').innerHTML = ''; return; }
+  allMembers.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'child-tab' + (selectedCheckupChild === c.slug ? ' active' : '');
+    btn.textContent = childLabel(c) + currentAgeLabel(c);
+    btn.addEventListener('click', () => { selectedCheckupChild = c.slug; render(); });
+    tabsWrap.appendChild(btn);
+  });
+
+  const listWrap = document.getElementById('checkup-list');
+  listWrap.innerHTML = '';
+  const list = checkupRecords.filter(r => r.member === selectedCheckupChild).sort((a, b) => b.date.localeCompare(a.date));
+  if (!list.length) { listWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการตรวจสุขภาพ</p>'; return; }
+  list.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'visit-card';
+    div.innerHTML = `<div class="row-between">
+        <span><strong>${fmtDateStr(r.date)}</strong>${r.note ? ' · ' + r.note : ''}</span>
+        <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+      </div>
+      <p class="muted" style="margin:6px 0 0;">
+        ${r.cost != null ? fmt(r.cost) + ' · ' : ''}${r.nextDate ? 'นัดครั้งถัดไป: ' + fmtDateStr(r.nextDate) : ''}
+      </p>`;
+    listWrap.appendChild(div);
+  });
+  listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('ลบรายการนี้?')) return;
+    checkupRecords = checkupRecords.filter(r => r.id !== btn.dataset.del);
+    await saveCheckupRecords(); render();
   }));
 }
 
@@ -1008,7 +1089,11 @@ function renderExpenses() {
   // ค่ารักษา/หาหมออื่นๆ ที่บันทึกเพิ่มเอง (แยกจากวัคซีน แต่แสดงรวมในลิสต์เดียวกัน)
   const otherList = otherExpenses.map(e => ({ type: 'other', id: e.id, member: e.member, date: e.date, note: e.note || '', amount: e.cost || 0, items: [] }));
 
-  const allList = [...vaccineGroupList, ...otherList].sort((a, b) => b.date.localeCompare(a.date));
+  // ค่าใช้จ่ายจากการตรวจสุขภาพ (เฉพาะรายการที่มีค่าใช้จ่ายจริง)
+  const checkupList = checkupRecords.filter(r => r.cost != null && r.cost > 0)
+    .map(r => ({ type: 'checkup', member: r.member, date: r.date, note: r.note || '', amount: r.cost, items: [] }));
+
+  const allList = [...vaccineGroupList, ...otherList, ...checkupList].sort((a, b) => b.date.localeCompare(a.date));
 
   if (!allList.length) {
     summaryEl.innerHTML = '';
@@ -1029,7 +1114,9 @@ function renderExpenses() {
     const child = findMember(g.member);
     const badge = g.type === 'vaccine'
       ? '<span class="type-badge type-badge-vaccine">วัคซีน</span>'
-      : '<span class="type-badge type-badge-other">ค่ารักษา/หาหมอ</span>';
+      : g.type === 'checkup'
+        ? '<span class="type-badge type-badge-checkup">ตรวจสุขภาพ</span>'
+        : '<span class="type-badge type-badge-other">ค่ารักษา/หาหมอ</span>';
     const itemsHtml = g.items.length ? `<ul class="muted" style="margin:8px 0 0;padding-left:18px;">${g.items.map(it => `<li>${it.name}${it.doseLabel ? ' — ' + it.doseLabel : ''}</li>`).join('')}</ul>` : '';
     const clickable = g.type === 'other' ? ` clickable" data-expid="${g.id}` : '';
     return `<div class="visit-card${clickable}">
@@ -1135,9 +1222,15 @@ function renderDueBanner() {
   const todayISO = toISO(new Date());
   const thresholdDate = toISO(new Date(Date.now() + 30 * 86400000));
   const items = [
-    ...collectDueItems(vaccineCatalog, children, todayISO, thresholdDate),
-    ...collectDueItems(adultVaccineCatalog, adults, todayISO, thresholdDate)
+    ...collectDueItems(vaccineCatalog, children, todayISO, thresholdDate).map(it => Object.assign({ kind: 'vaccine' }, it)),
+    ...collectDueItems(adultVaccineCatalog, adults, todayISO, thresholdDate).map(it => Object.assign({ kind: 'vaccine' }, it))
   ];
+  checkupRecords.forEach(r => {
+    if (r.nextDate && r.nextDate > todayISO && r.nextDate <= thresholdDate) {
+      const child = findMember(r.member);
+      items.push({ kind: 'checkup', child: child || { slug: r.member }, date: r.nextDate, note: r.note || '' });
+    }
+  });
   items.sort((a, b) => a.date.localeCompare(b.date));
   if (!items.length) { wrap.innerHTML = ''; return; }
   const statusLabel = {
@@ -1147,11 +1240,14 @@ function renderDueBanner() {
     planned: 'กะวันไว้เอง (ยังไม่ได้นัด)'
   };
   const rows = items.map(it => {
+    if (it.kind === 'checkup') {
+      return `<div class="due-row">⚠️ <strong>${childLabel(it.child)}</strong>: นัดตรวจสุขภาพ${it.note ? ' — ' + it.note : ''} (${fmtDateStr(it.date)})</div>`;
+    }
     const cls = it.status === 'overdue' ? ' overdue' : '';
     const vname = it.cat.nameTh || it.cat.nameEn;
     return `<div class="due-row${cls}">⚠️ <strong>${childLabel(it.child)}</strong>: ${vname} ${it.dose.label} — ${statusLabel[it.status]} (${fmtDateStr(it.date)})</div>`;
   }).join('');
-  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดฉีดที่ใกล้ถึง/เลยกำหนด (ภายใน 30 วัน)</strong>${rows}</div>`;
+  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดที่ใกล้ถึง/เลยกำหนด (ภายใน 30 วัน)</strong>${rows}</div>`;
 }
 
 function render() {
@@ -1160,6 +1256,7 @@ function render() {
   renderVaccineTable();
   renderAdultVaccineTable();
   renderDentistTab();
+  renderCheckupTab();
   renderExpenses();
   renderChildrenSetup();
   renderAdultsSetup();
@@ -1335,6 +1432,25 @@ document.getElementById('dt-add').addEventListener('click', async () => {
   });
   dateInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = '';
   await saveDentistRecords(); render();
+});
+
+document.getElementById('chk-add').addEventListener('click', async () => {
+  if (!selectedCheckupChild) return;
+  const dateInput = document.getElementById('chk-date');
+  const noteInput = document.getElementById('chk-note');
+  const costInput = document.getElementById('chk-cost');
+  const nextInput = document.getElementById('chk-next');
+  if (!dateInput.value) return;
+  checkupRecords.push({
+    id: genId(),
+    member: selectedCheckupChild,
+    date: dateInput.value,
+    note: noteInput.value.trim(),
+    cost: costInput.value !== '' && !isNaN(parseFloat(costInput.value)) ? parseFloat(costInput.value) : null,
+    nextDate: nextInput.value || null
+  });
+  dateInput.value = ''; noteInput.value = ''; costInput.value = ''; nextInput.value = '';
+  await saveCheckupRecords(); render();
 });
 
 const chMemberSelect = document.getElementById('ch-member');
