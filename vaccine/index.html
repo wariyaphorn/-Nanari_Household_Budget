@@ -166,6 +166,7 @@
   .type-badge-vaccine { background: #E4F6F2; color: #1F7A6E; }
   .type-badge-other { background: #EFEAFB; color: #5B4B9E; }
   .type-badge-checkup { background: #FFF6D9; color: #8A6D1B; }
+  .type-badge-dentist { background: #E3F0FC; color: #2B6CB0; }
   .visit-card.clickable { cursor: pointer; }
   .visit-card.clickable:hover { border-color: var(--sage); }
 </style>
@@ -247,16 +248,30 @@
     <section>
       <div class="card">
         <h2>ทันตกรรม</h2>
+        <p class="muted" style="margin:0 0 10px;">บันทึกได้ทั้งประวัติที่ผ่านมาและนัดในอนาคต (เช่น นัดทุก 6 เดือน) — ถ้าใส่วันที่เป็นอนาคต ระบบจะถือว่าเป็นนัด/คาดการณ์ และจะไปโผล่ในแบนเนอร์แจ้งเตือนด้านบนด้วย</p>
         <div class="child-tabs" id="dentist-child-tabs"></div>
         <div id="dentist-list"></div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="dt-date">วันที่พบหมอฟัน / วันนัด</label>
+            <input type="date" id="dt-date">
+          </div>
+          <div>
+            <label class="field-label" for="dt-note">รายละเอียด/หัตถการ</label>
+            <input type="text" id="dt-note" placeholder="เช่น ขูดหินปูน, อุดฟัน, ถอนฟัน (ไม่บังคับ)">
+          </div>
+        </div>
+        <label id="dt-confirmed-wrap" style="display:none;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary);margin:4px 0 12px;">
+          <input type="checkbox" id="dt-confirmed" style="width:auto;"> นัดกับหมอไว้แล้วจริง (ถ้าไม่ติ๊ก = เป็นการกะวันคาดคะเนของเราเอง)
+        </label>
         <div class="form-grid g3">
-          <input type="date" id="dt-date">
-          <input type="number" id="dt-milk" placeholder="ฟันน้ำนม (ซี่)" min="0">
-          <input type="number" id="dt-permanent" placeholder="ฟันแท้ (ซี่)" min="0">
+          <input type="number" id="dt-milk" placeholder="ฟันน้ำนม (ซี่) - ไม่บังคับ" min="0">
+          <input type="number" id="dt-permanent" placeholder="ฟันแท้ (ซี่) - ไม่บังคับ" min="0">
+          <input type="number" id="dt-decayed" placeholder="ฟันผุ (ซี่) - ไม่บังคับ" min="0">
         </div>
         <div class="form-grid g2">
-          <input type="number" id="dt-decayed" placeholder="ฟันผุ (ซี่)" min="0">
-          <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน</button>
+          <input type="number" id="dt-cost" placeholder="ค่าใช้จ่าย (บาท) - ไม่บังคับ" min="0">
+          <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน/นัดหมาย</button>
         </div>
       </div>
     </section>
@@ -980,19 +995,30 @@ function renderDentistTab() {
   const listWrap = document.getElementById('dentist-list');
   listWrap.innerHTML = '';
   const child = findMember(selectedDentistChild);
+  const todayISO = toISO(new Date());
   const list = dentistRecords.filter(r => r.member === selectedDentistChild).sort((a, b) => b.date.localeCompare(a.date));
   if (!list.length) { listWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการพบหมอฟัน</p>'; return; }
   list.forEach(r => {
     const div = document.createElement('div');
     div.className = 'visit-card';
     const age = child ? calcAge(child.birthDate, r.date) : '';
+    const isFuture = r.date > todayISO;
+    const statusBadge = isFuture
+      ? (r.confirmed ? '<span class="chip chip-booked" style="cursor:default;">นัดแล้ว</span>' : '<span class="chip chip-planned" style="cursor:default;">คาดว่าจะนัด</span>')
+      : '';
+    const teethParts = [];
+    if (r.milk != null) teethParts.push('ฟันน้ำนม ' + r.milk + ' ซี่');
+    if (r.permanent != null) teethParts.push('ฟันแท้ ' + r.permanent + ' ซี่');
+    if (r.decayed != null) teethParts.push('ฟันผุ ' + r.decayed + ' ซี่');
+    const detailParts = [];
+    if (r.note) detailParts.push(r.note);
+    if (teethParts.length) detailParts.push(teethParts.join(' · '));
+    if (r.cost != null) detailParts.push(fmt(r.cost));
     div.innerHTML = `<div class="row-between">
-        <span>${fmtDateStr(r.date)}${age ? ' <span class="muted">(อายุ ' + age + ')</span>' : ''}</span>
+        <span>${fmtDateStr(r.date)}${age ? ' <span class="muted">(อายุ ' + age + ')</span>' : ''} ${statusBadge}</span>
         <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
       </div>
-      <p class="muted" style="margin:6px 0 0;">
-        ${r.milk != null ? 'ฟันน้ำนม ' + r.milk + ' ซี่ · ' : ''}${r.permanent != null ? 'ฟันแท้ ' + r.permanent + ' ซี่ · ' : ''}${r.decayed != null ? 'ฟันผุ ' + r.decayed + ' ซี่' : ''}
-      </p>`;
+      ${detailParts.length ? `<p class="muted" style="margin:6px 0 0;">${detailParts.join(' · ')}</p>` : ''}`;
     listWrap.appendChild(div);
   });
   listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
@@ -1098,7 +1124,12 @@ function renderExpenses() {
   const checkupList = checkupRecords.filter(r => r.cost != null && r.cost > 0)
     .map(r => ({ type: 'checkup', member: r.member, date: r.date, note: r.note || '', amount: r.cost, items: [] }));
 
-  const allList = [...vaccineGroupList, ...otherList, ...checkupList].sort((a, b) => b.date.localeCompare(a.date));
+  // ค่าใช้จ่ายจากทันตกรรม (เฉพาะรายการที่มีค่าใช้จ่ายจริง และเป็นวันที่ผ่านมาแล้ว ไม่รวมนัดในอนาคตที่ยังไม่เกิดขึ้นจริง)
+  const todayISOExp = toISO(new Date());
+  const dentistList = dentistRecords.filter(r => r.cost != null && r.cost > 0 && r.date <= todayISOExp)
+    .map(r => ({ type: 'dentist', member: r.member, date: r.date, note: r.note || '', amount: r.cost, items: [] }));
+
+  const allList = [...vaccineGroupList, ...otherList, ...checkupList, ...dentistList].sort((a, b) => b.date.localeCompare(a.date));
 
   if (!allList.length) {
     summaryEl.innerHTML = '';
@@ -1121,7 +1152,9 @@ function renderExpenses() {
       ? '<span class="type-badge type-badge-vaccine">วัคซีน</span>'
       : g.type === 'checkup'
         ? '<span class="type-badge type-badge-checkup">ตรวจสุขภาพ</span>'
-        : '<span class="type-badge type-badge-other">ค่ารักษา/หาหมอ</span>';
+        : g.type === 'dentist'
+          ? '<span class="type-badge type-badge-dentist">ทันตกรรม</span>'
+          : '<span class="type-badge type-badge-other">ค่ารักษา/หาหมอ</span>';
     const itemsHtml = g.items.length ? `<ul class="muted" style="margin:8px 0 0;padding-left:18px;">${g.items.map(it => `<li>${it.name}${it.doseLabel ? ' — ' + it.doseLabel : ''}</li>`).join('')}</ul>` : '';
     const clickable = g.type === 'other' ? ` clickable" data-expid="${g.id}` : '';
     return `<div class="visit-card${clickable}">
@@ -1254,6 +1287,12 @@ function renderDueBanner() {
       items.push({ kind: 'checkup', child: child || { slug: r.member }, date: r.nextDate, note: r.note || '' });
     }
   });
+  dentistRecords.forEach(r => {
+    if (r.date > todayISO && r.date <= thresholdDate) {
+      const child = findMember(r.member);
+      items.push({ kind: 'dentist', child: child || { slug: r.member }, date: r.date, note: r.note || '', confirmed: !!r.confirmed });
+    }
+  });
   items.sort((a, b) => a.date.localeCompare(b.date));
   if (!items.length) { wrap.innerHTML = ''; return; }
   const statusLabel = {
@@ -1265,6 +1304,10 @@ function renderDueBanner() {
   const rows = items.map(it => {
     if (it.kind === 'checkup') {
       return `<div class="due-row">⚠️ <strong>${childLabel(it.child)}</strong>: นัดตรวจสุขภาพ${it.note ? ' — ' + it.note : ''} (${fmtDateStr(it.date)})</div>`;
+    }
+    if (it.kind === 'dentist') {
+      const statusTxt = it.confirmed ? 'มีนัดแล้ว' : 'กะวันไว้เอง (ยังไม่ได้นัด)';
+      return `<div class="due-row">⚠️ <strong>${childLabel(it.child)}</strong>: นัดหมอฟัน${it.note ? ' — ' + it.note : ''} — ${statusTxt} (${fmtDateStr(it.date)})</div>`;
     }
     const cls = it.status === 'overdue' ? ' overdue' : '';
     const vname = it.cat.nameTh || it.cat.nameEn;
@@ -1438,22 +1481,39 @@ document.getElementById('pm-delete-plan').addEventListener('click', async () => 
   render();
 });
 
+function toggleDtConfirmedField() {
+  const dateInput = document.getElementById('dt-date');
+  const wrap = document.getElementById('dt-confirmed-wrap');
+  const todayISO = toISO(new Date());
+  wrap.style.display = (dateInput.value && dateInput.value > todayISO) ? 'flex' : 'none';
+}
+document.getElementById('dt-date').addEventListener('change', toggleDtConfirmedField);
+
 document.getElementById('dt-add').addEventListener('click', async () => {
   if (!selectedDentistChild) return;
   const dateInput = document.getElementById('dt-date');
+  const noteInput = document.getElementById('dt-note');
   const milkInput = document.getElementById('dt-milk');
   const permInput = document.getElementById('dt-permanent');
   const decayInput = document.getElementById('dt-decayed');
+  const costInput = document.getElementById('dt-cost');
+  const confirmedInput = document.getElementById('dt-confirmed');
   if (!dateInput.value) return;
+  const todayISO = toISO(new Date());
+  const isFuture = dateInput.value > todayISO;
   dentistRecords.push({
     id: genId(),
     member: selectedDentistChild,
     date: dateInput.value,
+    note: noteInput.value.trim(),
     milk: milkInput.value !== '' ? parseInt(milkInput.value, 10) : null,
     permanent: permInput.value !== '' ? parseInt(permInput.value, 10) : null,
-    decayed: decayInput.value !== '' ? parseInt(decayInput.value, 10) : null
+    decayed: decayInput.value !== '' ? parseInt(decayInput.value, 10) : null,
+    cost: costInput.value !== '' && !isNaN(parseFloat(costInput.value)) ? parseFloat(costInput.value) : null,
+    confirmed: isFuture ? confirmedInput.checked : false
   });
-  dateInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = '';
+  dateInput.value = ''; noteInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = ''; costInput.value = ''; confirmedInput.checked = false;
+  document.getElementById('dt-confirmed-wrap').style.display = 'none';
   await saveDentistRecords(); render();
 });
 
