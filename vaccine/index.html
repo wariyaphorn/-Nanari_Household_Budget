@@ -656,6 +656,12 @@ async function load() {
   try { const r = await window.storage.get(ADULTS_KEY); adults = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdults(); } catch (e) { adults = defaultAdults(); }
   try { const r = await window.storage.get(ADULT_VACCINE_CATALOG_KEY); adultVaccineCatalog = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdultVaccineCatalog(); } catch (e) { adultVaccineCatalog = defaultAdultVaccineCatalog(); }
 
+  // ข้อมูลเก่า (จากค่าตั้งต้น) บางรายการไม่มี id ทำให้ปุ่มแก้ไข/ลบใช้งานไม่ได้ — เติม id ให้ครบแล้วบันทึกกลับ
+  let dentistIdsFixed = false;
+  dentistRecords = dentistRecords.map(r => r.id ? r : (dentistIdsFixed = true, Object.assign({ id: genId() }, r)));
+  let checkupIdsFixed = false;
+  checkupRecords = checkupRecords.map(r => r.id ? r : (checkupIdsFixed = true, Object.assign({ id: genId() }, r)));
+
   // ถ้ายังไม่เคยมี children ที่บันทึกไว้เลย (ครั้งแรกสุด) ให้บันทึกค่าตั้งต้นกลับไปด้วย
   try {
     const r = await window.storage.get(CHILDREN_KEY);
@@ -674,6 +680,8 @@ async function load() {
     if (!r7) await saveAdultVaccineCatalog();
     const r8 = await window.storage.get(CHECKUP_RECORDS_KEY);
     if (!r8) await saveCheckupRecords();
+    if (dentistIdsFixed) await saveDentistRecords();
+    if (checkupIdsFixed) await saveCheckupRecords();
   } catch (e) { console.error(e); }
 
   await migrateToVaccinePlans();
