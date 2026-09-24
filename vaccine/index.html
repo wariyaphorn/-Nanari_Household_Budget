@@ -143,6 +143,9 @@
   .empty { color: var(--text-muted); font-size: 13px; }
   .banner { background: #FDEEDC; border: 1px solid #F7D9AE; border-radius: 14px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; color: #7A4E12; }
   .banner a { color: var(--ink); font-weight: 600; }
+  .banner-due { background: #FDEEDC; border: 1px solid #F7D9AE; border-radius: 14px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; color: #7A4E12; }
+  .banner-due .due-row { padding: 3px 0; }
+  .banner-due .due-row.overdue { color: #C0402A; font-weight: 600; }
   .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
   @media (max-width: 640px) {
     .setup-row { grid-template-columns: 1fr; }
@@ -191,6 +194,7 @@
   </nav>
 
   <div id="setup-banner"></div>
+  <div id="due-banner"></div>
 
   <div id="page-vaccine" class="page active">
     <section>
@@ -1017,8 +1021,50 @@ document.getElementById('em-delete').addEventListener('click', async () => {
   render();
 });
 
+function renderDueBanner() {
+  const wrap = document.getElementById('due-banner');
+  if (!wrap) return;
+  const todayISO = toISO(new Date());
+  const thresholdDate = toISO(new Date(Date.now() + 30 * 86400000));
+  const items = [];
+  children.forEach(c => {
+    vaccineCatalog.forEach(cat => {
+      if (cat.repeatable) return;
+      (cat.doses || []).forEach(dose => {
+        const rec = vaccineRecords.find(r => r.planId === cat.id && r.doseNumber === dose.doseNumber && r.member === c.slug);
+        if (rec && rec.skipped) return;
+        if (rec && rec.dateGiven) {
+          if (rec.dateGiven > todayISO && rec.dateGiven <= thresholdDate) {
+            items.push({ child: c, cat, dose, date: rec.dateGiven, status: rec.confirmed ? 'booked' : 'planned' });
+          }
+          return;
+        }
+        const predicted = computeDosePrediction(dose, c.birthDate, cat.id, vaccineRecords, c.slug);
+        if (predicted && predicted <= thresholdDate) {
+          items.push({ child: c, cat, dose, date: predicted, status: predicted <= todayISO ? 'overdue' : 'predicted' });
+        }
+      });
+    });
+  });
+  items.sort((a, b) => a.date.localeCompare(b.date));
+  if (!items.length) { wrap.innerHTML = ''; return; }
+  const statusLabel = {
+    overdue: 'เลยกำหนดแล้ว (คาดการณ์)',
+    predicted: 'ใกล้ถึงกำหนด (คาดการณ์)',
+    booked: 'มีนัดแล้ว',
+    planned: 'กะวันไว้เอง (ยังไม่ได้นัด)'
+  };
+  const rows = items.map(it => {
+    const cls = it.status === 'overdue' ? ' overdue' : '';
+    const vname = it.cat.nameTh || it.cat.nameEn;
+    return `<div class="due-row${cls}">⚠️ <strong>${childLabel(it.child)}</strong>: ${vname} ${it.dose.label} — ${statusLabel[it.status]} (${fmtDateStr(it.date)})</div>`;
+  }).join('');
+  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดฉีดที่ใกล้ถึง/เลยกำหนด (ภายใน 30 วัน)</strong>${rows}</div>`;
+}
+
 function render() {
   renderSetupBanner();
+  renderDueBanner();
   renderVaccineTable();
   renderDentistTab();
   renderExpenses();
