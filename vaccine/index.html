@@ -600,22 +600,30 @@ function doseSubLabel(age) {
   return age ? '(' + age + ')' : '';
 }
 
+function currentAgeLabel(child) {
+  const age = calcAge(child.birthDate, toISO(new Date()));
+  return age ? ' (' + age + ')' : '';
+}
+
 function futureChipClass(rec) { return rec.confirmed ? 'chip-booked' : 'chip-planned'; }
 function futureChipPrefix(rec) { return rec.confirmed ? 'นัดแล้ว: ' : 'ยังไม่นัด: '; }
 
-function nameCellHtml(cat, rowspan) {
-  return `<td class="namecell"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''}><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td>`;
+function nameCellHtml(cat, rowspan, idx, total) {
+  const upBtn = idx > 0 ? `<button type="button" class="btn" style="padding:2px 6px;font-size:11px;" data-moveup="${cat.id}" title="เลื่อนขึ้น">⬆️</button>` : '';
+  const downBtn = idx < total - 1 ? `<button type="button" class="btn" style="padding:2px 6px;font-size:11px;" data-movedown="${cat.id}" title="เลื่อนลง">⬇️</button>` : '';
+  return `<td class="namecell"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''}><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><span style="display:flex;flex-direction:column;gap:2px;flex-shrink:0;">${upBtn}${downBtn}</span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td>`;
 }
 
 function renderVaccineTable() {
   const table = document.getElementById('vaccine-table');
   const todayISO = toISO(new Date());
+  const total = vaccineCatalog.length;
   let html = '<thead><tr><th>วัคซีน</th><th>กำหนดการ</th>';
-  children.forEach(c => { html += `<th>${childLabel(c)}</th>`; });
+  children.forEach(c => { html += `<th>${childLabel(c)}${currentAgeLabel(c)}</th>`; });
   html += '</tr></thead><tbody>';
-  vaccineCatalog.forEach(cat => {
+  vaccineCatalog.forEach((cat, catIdx) => {
     if (cat.repeatable) {
-      html += `<tr>${nameCellHtml(cat, 1)}<td style="font-size:12px;">${cat.ageLabel || cat.recommendedAge || ''}</td>`;
+      html += `<tr>${nameCellHtml(cat, 1, catIdx, total)}<td style="font-size:12px;">${cat.ageLabel || cat.recommendedAge || ''}</td>`;
       children.forEach(c => {
         const recs = vaccineRecords.filter(r => r.planId === cat.id && r.member === c.slug).sort((a, b) => a.dateGiven.localeCompare(b.dateGiven));
         let cellHtml = '';
@@ -636,7 +644,7 @@ function renderVaccineTable() {
       const doses = cat.doses || [];
       doses.forEach((dose, doseIdx) => {
         html += '<tr>';
-        if (doseIdx === 0) html += nameCellHtml(cat, doses.length);
+        if (doseIdx === 0) html += nameCellHtml(cat, doses.length, catIdx, total);
         html += `<td style="font-size:12px;white-space:nowrap;">${dose.label}: ${doseScheduleLabel(dose)}</td>`;
         children.forEach(c => {
           const rec = vaccineRecords.find(r => r.planId === cat.id && r.doseNumber === dose.doseNumber && r.member === c.slug);
@@ -680,6 +688,23 @@ function renderVaccineTable() {
   table.querySelectorAll('[data-editplan]').forEach(el => {
     el.addEventListener('click', () => openPlanEditor(el.dataset.editplan));
   });
+  table.querySelectorAll('[data-moveup]').forEach(el => {
+    el.addEventListener('click', () => moveVaccinePlan(el.dataset.moveup, -1));
+  });
+  table.querySelectorAll('[data-movedown]').forEach(el => {
+    el.addEventListener('click', () => moveVaccinePlan(el.dataset.movedown, 1));
+  });
+}
+
+async function moveVaccinePlan(planId, direction) {
+  const idx = vaccineCatalog.findIndex(p => p.id === planId);
+  const newIdx = idx + direction;
+  if (idx < 0 || newIdx < 0 || newIdx >= vaccineCatalog.length) return;
+  const tmp = vaccineCatalog[idx];
+  vaccineCatalog[idx] = vaccineCatalog[newIdx];
+  vaccineCatalog[newIdx] = tmp;
+  await saveVaccineCatalog();
+  render();
 }
 
 // --- modal บันทึก/แก้ไขวัคซีน (แทนที่ window.prompt แบบเดิม) ---
@@ -796,7 +821,7 @@ function renderDentistTab() {
   children.forEach(c => {
     const btn = document.createElement('button');
     btn.className = 'child-tab' + (selectedDentistChild === c.slug ? ' active' : '');
-    btn.textContent = childLabel(c);
+    btn.textContent = childLabel(c) + currentAgeLabel(c);
     btn.addEventListener('click', () => { selectedDentistChild = c.slug; render(); });
     tabsWrap.appendChild(btn);
   });
@@ -843,7 +868,7 @@ function renderChildrenSetup() {
     row.className = 'setup-row';
     const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === c.memberKey ? 'selected' : ''}>${m.label}</option>`).join('');
     row.innerHTML = `
-      <span>${c.slug}</span>
+      <span>${c.slug}${currentAgeLabel(c)}</span>
       <select class="cs-member">${memberOptions}</select>
       <input type="date" class="cs-birth" value="${c.birthDate || ''}">
     `;
