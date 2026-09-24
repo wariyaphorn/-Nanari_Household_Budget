@@ -148,6 +148,12 @@
   .banner-due { background: #FDEEDC; border: 1px solid #F7D9AE; border-radius: 14px; padding: 12px 16px; margin-bottom: 1.25rem; font-size: 13px; color: #7A4E12; }
   .banner-due .due-row { padding: 3px 0; }
   .banner-due .due-row.overdue { color: #C0402A; font-weight: 600; }
+  .banner-due .due-group { margin-top: 10px; }
+  .banner-due .due-group:first-of-type { margin-top: 8px; }
+  .banner-due .due-date-head { font-weight: 700; padding: 2px 0; }
+  .banner-due .due-date-head.overdue { color: #C0402A; }
+  .banner-due .due-subrow { padding: 2px 0 2px 18px; }
+  .banner-due .due-subrow.overdue { color: #C0402A; font-weight: 600; }
   .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
   @media (max-width: 640px) {
     .setup-row { grid-template-columns: 1fr; }
@@ -191,7 +197,7 @@
   </header>
 
   <nav class="page-tabs">
-    <button class="page-tab active" data-page="vaccine">วัคซีน</button>
+    <button class="page-tab active" data-page="vaccine">วัคซีนเด็ก</button>
     <button class="page-tab" data-page="adult-vaccine">วัคซีนผู้ใหญ่</button>
     <button class="page-tab" data-page="dentist">ทันตกรรม</button>
     <button class="page-tab" data-page="checkup">ตรวจสุขภาพ</button>
@@ -1301,19 +1307,36 @@ function renderDueBanner() {
     booked: 'มีนัดแล้ว',
     planned: 'กะวันไว้เอง (ยังไม่ได้นัด)'
   };
-  const rows = items.map(it => {
+  function itemLineHtml(it) {
     if (it.kind === 'checkup') {
-      return `<div class="due-row">⚠️ <strong>${childLabel(it.child)}</strong>: นัดตรวจสุขภาพ${it.note ? ' — ' + it.note : ''} (${fmtDateStr(it.date)})</div>`;
+      return `<strong>${childLabel(it.child)}</strong> — นัดตรวจสุขภาพ${it.note ? ' — ' + it.note : ''}`;
     }
     if (it.kind === 'dentist') {
       const statusTxt = it.confirmed ? 'มีนัดแล้ว' : 'กะวันไว้เอง (ยังไม่ได้นัด)';
-      return `<div class="due-row">⚠️ <strong>${childLabel(it.child)}</strong>: นัดหมอฟัน${it.note ? ' — ' + it.note : ''} — ${statusTxt} (${fmtDateStr(it.date)})</div>`;
+      return `<strong>${childLabel(it.child)}</strong> — นัดหมอฟัน${it.note ? ' — ' + it.note : ''} — ${statusTxt}`;
     }
-    const cls = it.status === 'overdue' ? ' overdue' : '';
     const vname = it.cat.nameTh || it.cat.nameEn;
-    return `<div class="due-row${cls}">⚠️ <strong>${childLabel(it.child)}</strong>: ${vname} ${it.dose.label} — ${statusLabel[it.status]} (${fmtDateStr(it.date)})</div>`;
+    return `<strong>${childLabel(it.child)}</strong> — ${vname} ${it.dose.label} — ${statusLabel[it.status]}`;
+  }
+  // จัดกลุ่มตามวันที่ก่อน เพื่อให้เห็นง่ายว่าวันไหนมีใครมีนัด/กำหนดบ้าง จะได้พาไปพร้อมกันได้
+  const byDate = {};
+  const dateOrder = [];
+  items.forEach(it => {
+    if (!byDate[it.date]) { byDate[it.date] = []; dateOrder.push(it.date); }
+    byDate[it.date].push(it);
+  });
+  const WEEKDAY_TH = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+  const groups = dateOrder.map(date => {
+    const dayItems = byDate[date];
+    const hasOverdue = dayItems.some(it => it.status === 'overdue');
+    const weekday = WEEKDAY_TH[new Date(date + 'T00:00:00').getDay()];
+    const lines = dayItems.map(it => `<div class="due-subrow${it.status === 'overdue' ? ' overdue' : ''}">• ${itemLineHtml(it)}</div>`).join('');
+    return `<div class="due-group">
+      <div class="due-date-head${hasOverdue ? ' overdue' : ''}">⚠️ ${fmtDateStr(date)} (${weekday})</div>
+      ${lines}
+    </div>`;
   }).join('');
-  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดที่ใกล้ถึง/เลยกำหนด (ถึงวันที่ ${fmtDateStr(thresholdDate)})</strong>${rows}</div>`;
+  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดที่ใกล้ถึง/เลยกำหนด (ถึงวันที่ ${fmtDateStr(thresholdDate)})</strong>${groups}</div>`;
 }
 
 function render() {
