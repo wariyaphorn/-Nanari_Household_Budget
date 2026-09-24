@@ -601,8 +601,7 @@ function doseSubLabel(age) {
 }
 
 function futureChipClass(rec) { return rec.confirmed ? 'chip-booked' : 'chip-planned'; }
-function futureChipPrefix(rec) { return rec.confirmed ? 'นัดแล้ว: ' : 'กะไว้เอง: '; }
-function futureChipSuffix(rec) { return rec.confirmed ? '' : ' <span class="chip-sub">(ยังไม่ได้นัด)</span>'; }
+function futureChipPrefix(rec) { return rec.confirmed ? 'นัดแล้ว: ' : 'ยังไม่นัด: '; }
 
 function nameCellHtml(cat, rowspan) {
   return `<td class="namecell"${rowspan > 1 ? ` rowspan="${rowspan}"` : ''}><div class="row-between"><span><strong>${cat.nameEn}</strong><br><span class="muted">${cat.nameTh || ''}</span></span><button type="button" class="btn" style="padding:4px 8px;font-size:12px;flex-shrink:0;" data-editplan="${cat.id}" title="แก้ไขวัคซีนนี้">✏️</button></div></td>`;
@@ -626,8 +625,8 @@ function renderVaccineTable() {
           const sub = doseSubLabel(age);
           const chipClass = isFuture ? futureChipClass(rec) : 'chip-given';
           const prefix = isFuture ? futureChipPrefix(rec) : '';
-          const suffix = isFuture ? futureChipSuffix(rec) : '';
-          cellHtml += `<span class="chip ${chipClass}" data-recid="${rec.id}">${prefix}${fmtDateStr(rec.dateGiven)}${sub ? ` <span class="chip-sub">${sub}</span>` : ''}${suffix}</span>`;
+          const subGap = isFuture ? '' : ' ';
+          cellHtml += `<span class="chip ${chipClass}" data-recid="${rec.id}">${prefix}${fmtDateStr(rec.dateGiven)}${sub ? `${subGap}<span class="chip-sub">${sub}</span>` : ''}</span>`;
         });
         cellHtml += `<span class="chip chip-empty" data-addplan="${cat.id}" data-addchild="${c.slug}">+ เพิ่มเข็ม</span>`;
         html += `<td>${cellHtml}</td>`;
@@ -649,14 +648,16 @@ function renderVaccineTable() {
             const sub = doseSubLabel(age);
             const chipClass = isFuture ? futureChipClass(rec) : 'chip-given';
             const prefix = isFuture ? futureChipPrefix(rec) : '';
-            const suffix = isFuture ? futureChipSuffix(rec) : '';
-            html += `<td><span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${prefix}${fmtDateStr(rec.dateGiven)}${sub ? ` <span class="chip-sub">${sub}</span>` : ''}${suffix}</span></td>`;
+            const subGap = isFuture ? '' : ' ';
+            html += `<td><span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${prefix}${fmtDateStr(rec.dateGiven)}${sub ? `${subGap}<span class="chip-sub">${sub}</span>` : ''}</span></td>`;
           } else {
             const predicted = computeDosePrediction(dose, c.birthDate, cat.id, vaccineRecords, c.slug);
             let chipClass = 'chip-empty', statusText = 'ยังไม่บันทึก';
             if (predicted) {
-              if (predicted <= todayISO) { chipClass = 'chip-overdue'; statusText = 'ควรฉีดแล้ว (~' + fmtDateStr(predicted) + ')'; }
-              else { chipClass = 'chip-due'; statusText = 'คาดว่า ~' + fmtDateStr(predicted); }
+              const predAge = calcAge(c.birthDate, predicted);
+              const predSub = predAge ? '(' + predAge + ')' : '';
+              if (predicted <= todayISO) { chipClass = 'chip-overdue'; statusText = 'ควรฉีดแล้ว ~ : ' + fmtDateStr(predicted) + predSub; }
+              else { chipClass = 'chip-due'; statusText = 'คาดว่า ~ : ' + fmtDateStr(predicted) + predSub; }
             }
             html += `<td><span class="chip ${chipClass}" data-plan="${cat.id}" data-dose="${dose.doseNumber}" data-child="${c.slug}">${statusText}</span></td>`;
           }
