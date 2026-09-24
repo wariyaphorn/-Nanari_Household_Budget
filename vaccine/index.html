@@ -277,7 +277,10 @@
         </div>
         <div class="form-grid g2">
           <input type="number" id="dt-cost" placeholder="ค่าใช้จ่าย (บาท) - ไม่บังคับ" min="0">
-          <button class="btn btn-primary" id="dt-add">+ บันทึกการพบหมอฟัน/นัดหมาย</button>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-primary" id="dt-add" style="flex:1;">+ บันทึกการพบหมอฟัน/นัดหมาย</button>
+            <button class="btn" id="dt-cancel-edit" style="display:none;">ยกเลิก</button>
+          </div>
         </div>
       </div>
     </section>
@@ -310,7 +313,10 @@
             <input type="date" id="chk-next">
           </div>
         </div>
-        <button class="btn btn-primary" id="chk-add" style="margin-top:8px;">+ บันทึกการตรวจสุขภาพ</button>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" id="chk-add" style="flex:1;">+ บันทึกการตรวจสุขภาพ</button>
+          <button class="btn" id="chk-cancel-edit" style="display:none;">ยกเลิก</button>
+        </div>
       </div>
     </section>
   </div>
@@ -538,6 +544,8 @@ let otherExpenses = [];
 let checkupRecords = [];
 let selectedDentistChild = null;
 let selectedCheckupChild = null;
+let editingDentistId = null;
+let editingCheckupId = null;
 
 function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -994,7 +1002,7 @@ function renderDentistTab() {
     const btn = document.createElement('button');
     btn.className = 'child-tab' + (selectedDentistChild === c.slug ? ' active' : '');
     btn.textContent = childLabel(c) + currentAgeLabel(c);
-    btn.addEventListener('click', () => { selectedDentistChild = c.slug; render(); });
+    btn.addEventListener('click', () => { selectedDentistChild = c.slug; cancelDentistEdit(); render(); });
     tabsWrap.appendChild(btn);
   });
 
@@ -1022,7 +1030,10 @@ function renderDentistTab() {
     if (r.cost != null) detailParts.push(fmt(r.cost));
     div.innerHTML = `<div class="row-between">
         <span>${fmtDateStr(r.date)}${age ? ' <span class="muted">(อายุ ' + age + ')</span>' : ''} ${statusBadge}</span>
-        <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+        <span>
+          <button class="del-btn" data-edit="${r.id}" aria-label="แก้ไข" style="margin-right:4px;">✏️</button>
+          <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+        </span>
       </div>
       ${detailParts.length ? `<p class="muted" style="margin:6px 0 0;">${detailParts.join(' · ')}</p>` : ''}`;
     listWrap.appendChild(div);
@@ -1030,8 +1041,41 @@ function renderDentistTab() {
   listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('ลบรายการนี้?')) return;
     dentistRecords = dentistRecords.filter(r => r.id !== btn.dataset.del);
+    if (editingDentistId === btn.dataset.del) cancelDentistEdit();
     await saveDentistRecords(); render();
   }));
+  listWrap.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => startDentistEdit(btn.dataset.edit)));
+}
+
+function startDentistEdit(id) {
+  const r = dentistRecords.find(x => x.id === id);
+  if (!r) return;
+  editingDentistId = id;
+  document.getElementById('dt-date').value = r.date || '';
+  document.getElementById('dt-note').value = r.note || '';
+  document.getElementById('dt-milk').value = r.milk != null ? r.milk : '';
+  document.getElementById('dt-permanent').value = r.permanent != null ? r.permanent : '';
+  document.getElementById('dt-decayed').value = r.decayed != null ? r.decayed : '';
+  document.getElementById('dt-cost').value = r.cost != null ? r.cost : '';
+  document.getElementById('dt-confirmed').checked = !!r.confirmed;
+  toggleDtConfirmedField();
+  document.getElementById('dt-add').textContent = '💾 บันทึกการแก้ไข';
+  document.getElementById('dt-cancel-edit').style.display = 'inline-block';
+  document.getElementById('dt-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelDentistEdit() {
+  editingDentistId = null;
+  document.getElementById('dt-date').value = '';
+  document.getElementById('dt-note').value = '';
+  document.getElementById('dt-milk').value = '';
+  document.getElementById('dt-permanent').value = '';
+  document.getElementById('dt-decayed').value = '';
+  document.getElementById('dt-cost').value = '';
+  document.getElementById('dt-confirmed').checked = false;
+  document.getElementById('dt-confirmed-wrap').style.display = 'none';
+  document.getElementById('dt-add').textContent = '+ บันทึกการพบหมอฟัน/นัดหมาย';
+  document.getElementById('dt-cancel-edit').style.display = 'none';
 }
 
 function renderCheckupTab() {
@@ -1044,7 +1088,7 @@ function renderCheckupTab() {
     const btn = document.createElement('button');
     btn.className = 'child-tab' + (selectedCheckupChild === c.slug ? ' active' : '');
     btn.textContent = childLabel(c) + currentAgeLabel(c);
-    btn.addEventListener('click', () => { selectedCheckupChild = c.slug; render(); });
+    btn.addEventListener('click', () => { selectedCheckupChild = c.slug; cancelCheckupEdit(); render(); });
     tabsWrap.appendChild(btn);
   });
 
@@ -1057,7 +1101,10 @@ function renderCheckupTab() {
     div.className = 'visit-card';
     div.innerHTML = `<div class="row-between">
         <span><strong>${fmtDateStr(r.date)}</strong>${r.note ? ' · ' + r.note : ''}</span>
-        <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+        <span>
+          <button class="del-btn" data-edit="${r.id}" aria-label="แก้ไข" style="margin-right:4px;">✏️</button>
+          <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+        </span>
       </div>
       <p class="muted" style="margin:6px 0 0;">
         ${r.cost != null ? fmt(r.cost) + ' · ' : ''}${r.nextDate ? 'นัดครั้งถัดไป: ' + fmtDateStr(r.nextDate) : ''}
@@ -1067,8 +1114,33 @@ function renderCheckupTab() {
   listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
     if (!confirm('ลบรายการนี้?')) return;
     checkupRecords = checkupRecords.filter(r => r.id !== btn.dataset.del);
+    if (editingCheckupId === btn.dataset.del) cancelCheckupEdit();
     await saveCheckupRecords(); render();
   }));
+  listWrap.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => startCheckupEdit(btn.dataset.edit)));
+}
+
+function startCheckupEdit(id) {
+  const r = checkupRecords.find(x => x.id === id);
+  if (!r) return;
+  editingCheckupId = id;
+  document.getElementById('chk-date').value = r.date || '';
+  document.getElementById('chk-note').value = r.note || '';
+  document.getElementById('chk-cost').value = r.cost != null ? r.cost : '';
+  document.getElementById('chk-next').value = r.nextDate || '';
+  document.getElementById('chk-add').textContent = '💾 บันทึกการแก้ไข';
+  document.getElementById('chk-cancel-edit').style.display = 'inline-block';
+  document.getElementById('chk-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelCheckupEdit() {
+  editingCheckupId = null;
+  document.getElementById('chk-date').value = '';
+  document.getElementById('chk-note').value = '';
+  document.getElementById('chk-cost').value = '';
+  document.getElementById('chk-next').value = '';
+  document.getElementById('chk-add').textContent = '+ บันทึกการตรวจสุขภาพ';
+  document.getElementById('chk-cancel-edit').style.display = 'none';
 }
 
 function refreshChildMemberSelect(sel) {
@@ -1524,9 +1596,7 @@ document.getElementById('dt-add').addEventListener('click', async () => {
   if (!dateInput.value) return;
   const todayISO = toISO(new Date());
   const isFuture = dateInput.value > todayISO;
-  dentistRecords.push({
-    id: genId(),
-    member: selectedDentistChild,
+  const values = {
     date: dateInput.value,
     note: noteInput.value.trim(),
     milk: milkInput.value !== '' ? parseInt(milkInput.value, 10) : null,
@@ -1534,11 +1604,19 @@ document.getElementById('dt-add').addEventListener('click', async () => {
     decayed: decayInput.value !== '' ? parseInt(decayInput.value, 10) : null,
     cost: costInput.value !== '' && !isNaN(parseFloat(costInput.value)) ? parseFloat(costInput.value) : null,
     confirmed: isFuture ? confirmedInput.checked : false
-  });
-  dateInput.value = ''; noteInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = ''; costInput.value = ''; confirmedInput.checked = false;
-  document.getElementById('dt-confirmed-wrap').style.display = 'none';
+  };
+  if (editingDentistId) {
+    const rec = dentistRecords.find(r => r.id === editingDentistId);
+    if (rec) Object.assign(rec, values);
+    cancelDentistEdit();
+  } else {
+    dentistRecords.push(Object.assign({ id: genId(), member: selectedDentistChild }, values));
+    dateInput.value = ''; noteInput.value = ''; milkInput.value = ''; permInput.value = ''; decayInput.value = ''; costInput.value = ''; confirmedInput.checked = false;
+    document.getElementById('dt-confirmed-wrap').style.display = 'none';
+  }
   await saveDentistRecords(); render();
 });
+document.getElementById('dt-cancel-edit').addEventListener('click', () => { cancelDentistEdit(); render(); });
 
 document.getElementById('chk-add').addEventListener('click', async () => {
   if (!selectedCheckupChild) return;
@@ -1547,17 +1625,23 @@ document.getElementById('chk-add').addEventListener('click', async () => {
   const costInput = document.getElementById('chk-cost');
   const nextInput = document.getElementById('chk-next');
   if (!dateInput.value) return;
-  checkupRecords.push({
-    id: genId(),
-    member: selectedCheckupChild,
+  const values = {
     date: dateInput.value,
     note: noteInput.value.trim(),
     cost: costInput.value !== '' && !isNaN(parseFloat(costInput.value)) ? parseFloat(costInput.value) : null,
     nextDate: nextInput.value || null
-  });
-  dateInput.value = ''; noteInput.value = ''; costInput.value = ''; nextInput.value = '';
+  };
+  if (editingCheckupId) {
+    const rec = checkupRecords.find(r => r.id === editingCheckupId);
+    if (rec) Object.assign(rec, values);
+    cancelCheckupEdit();
+  } else {
+    checkupRecords.push(Object.assign({ id: genId(), member: selectedCheckupChild }, values));
+    dateInput.value = ''; noteInput.value = ''; costInput.value = ''; nextInput.value = '';
+  }
   await saveCheckupRecords(); render();
 });
+document.getElementById('chk-cancel-edit').addEventListener('click', () => { cancelCheckupEdit(); render(); });
 
 const chMemberSelect = document.getElementById('ch-member');
 document.getElementById('ch-add').addEventListener('click', async () => {
