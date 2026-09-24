@@ -199,6 +199,10 @@
   </nav>
 
   <div id="setup-banner"></div>
+  <div id="due-threshold-wrap" style="margin-bottom:8px;font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <label for="due-threshold-date">ดูแจ้งเตือนถึงวันที่:</label>
+    <input type="date" id="due-threshold-date" style="width:auto;padding:6px 8px;">
+  </div>
   <div id="due-banner"></div>
 
   <div id="page-vaccine" class="page active">
@@ -688,6 +692,7 @@ async function loadCodeVersion() {
   }
 }
 loadCodeVersion();
+initDueThresholdControl();
 
 function renderSetupBanner() {
   const wrap = document.getElementById('setup-banner');
@@ -1216,11 +1221,29 @@ function collectDueItems(catalog, memberList, todayISO, thresholdDate) {
   return items;
 }
 
+function getDueThresholdDate() {
+  const defaultDate = toISO(new Date(Date.now() + 30 * 86400000));
+  let saved = null;
+  try { saved = localStorage.getItem('vaccine-due-threshold-date'); } catch (e) {}
+  return saved || defaultDate;
+}
+
+function initDueThresholdControl() {
+  const input = document.getElementById('due-threshold-date');
+  if (!input) return;
+  input.value = getDueThresholdDate();
+  input.addEventListener('change', () => {
+    if (!input.value) return;
+    try { localStorage.setItem('vaccine-due-threshold-date', input.value); } catch (e) {}
+    renderDueBanner();
+  });
+}
+
 function renderDueBanner() {
   const wrap = document.getElementById('due-banner');
   if (!wrap) return;
   const todayISO = toISO(new Date());
-  const thresholdDate = toISO(new Date(Date.now() + 30 * 86400000));
+  const thresholdDate = getDueThresholdDate();
   const items = [
     ...collectDueItems(vaccineCatalog, children, todayISO, thresholdDate).map(it => Object.assign({ kind: 'vaccine' }, it)),
     ...collectDueItems(adultVaccineCatalog, adults, todayISO, thresholdDate).map(it => Object.assign({ kind: 'vaccine' }, it))
@@ -1247,7 +1270,7 @@ function renderDueBanner() {
     const vname = it.cat.nameTh || it.cat.nameEn;
     return `<div class="due-row${cls}">⚠️ <strong>${childLabel(it.child)}</strong>: ${vname} ${it.dose.label} — ${statusLabel[it.status]} (${fmtDateStr(it.date)})</div>`;
   }).join('');
-  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดที่ใกล้ถึง/เลยกำหนด (ภายใน 30 วัน)</strong>${rows}</div>`;
+  wrap.innerHTML = `<div class="banner-due"><strong>📅 กำหนดที่ใกล้ถึง/เลยกำหนด (ถึงวันที่ ${fmtDateStr(thresholdDate)})</strong>${rows}</div>`;
 }
 
 function render() {
