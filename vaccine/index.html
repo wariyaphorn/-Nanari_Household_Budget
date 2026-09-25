@@ -135,6 +135,12 @@
   .child-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .child-tab { border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 7px 16px; font-size: 13px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
   .child-tab.active { background: var(--sage); color: #fff; border-color: var(--sage); }
+  .growth-member-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--card); border-radius: 20px; padding: 6px 14px 6px 10px; font-size: 13px; cursor: pointer; color: var(--text-secondary); font-weight: 500; }
+  .growth-member-chip input { width: auto; margin: 0; }
+  .growth-member-chip .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+  .growth-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12.5px; color: var(--text-secondary); }
+  .growth-legend span.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .growth-chart-empty { color: var(--text-muted); font-size: 13.5px; padding: 24px 0; text-align: center; }
   .visit-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 0.9rem 1.1rem; margin-bottom: 8px; }
   .row-between { display: flex; justify-content: space-between; align-items: center; }
   .form-grid { display: grid; gap: 10px; margin-bottom: 8px; }
@@ -326,7 +332,21 @@
   <div id="page-growth" class="page">
     <section>
       <div class="card">
-        <h2>การเจริญเติบโต</h2>
+        <h2>กราฟการเจริญเติบโต</h2>
+        <p class="muted" style="margin:0 0 10px;">เลือกได้หลายคนเพื่อดูเทียบกันในกราฟเดียว — เส้นแรเงาคือช่วงเกณฑ์มาตรฐาน WHO (P3-P97) เฉพาะเด็กอายุไม่เกิน 5 ปี ใช้เพื่อดูแนวโน้มคร่าวๆ ไม่ใช่การวินิจฉัยทางการแพทย์</p>
+        <div id="growth-chart-members" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:10px;"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:10px;">
+          <div id="growth-metric-tabs" class="child-tabs"></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);">
+            <input type="checkbox" id="growth-show-ref" style="width:auto;"> แสดงเกณฑ์มาตรฐาน (WHO)
+          </label>
+        </div>
+        <div id="growth-chart-wrap"></div>
+      </div>
+    </section>
+    <section>
+      <div class="card">
+        <h2>ประวัติการเจริญเติบโต</h2>
         <p class="muted" style="margin:0 0 10px;">บันทึกน้ำหนัก/ส่วนสูง เพื่อดูพัฒนาการย้อนหลัง</p>
         <div class="child-tabs" id="growth-child-tabs"></div>
         <div id="growth-list"></div>
@@ -589,6 +609,30 @@ const VACCINE_CATALOG_SEED = [{"id": "bcg", "nameEn": "BCG", "nameTh": "วั�
 const VACCINE_RECORDS_SEED = [{"id": "seed-0", "planId": "bcg", "doseNumber": 1, "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"id": "seed-1", "planId": "bcg", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-2", "planId": "bcg", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-3", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "lalynn", "dateGiven": "2023-12-16", "note": "", "cost": null}, {"id": "seed-4", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-5", "planId": "hepatitis-b-hbv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-11-20", "note": "", "cost": null}, {"id": "seed-6", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-7", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"id": "seed-8", "planId": "hepatitis-b-hbv", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": 5499.0}, {"id": "seed-9", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-10", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-11", "planId": "hepatitis-b-hbv", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-12", "planId": "dtp-ipv", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-13", "planId": "dtp-ipv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-14", "planId": "dtp-ipv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-15", "planId": "dtp-ipv", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-16", "planId": "dtp-ipv", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-17", "planId": "dtp-ipv", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-18", "planId": "dtp-ipv", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-19", "planId": "dtp-ipv", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-20", "planId": "dtp-ipv", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-21", "planId": "dtp-ipv", "doseNumber": 4, "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"id": "seed-22", "planId": "dtp-ipv", "doseNumber": 5, "member": "lalynn", "dateGiven": "2027-12-18", "note": "", "cost": null}, {"id": "seed-23", "planId": "hib", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-24", "planId": "hib", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-25", "planId": "hib", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-26", "planId": "hib", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-27", "planId": "hib", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-28", "planId": "hib", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-29", "planId": "hib", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-06-15", "note": "", "cost": null}, {"id": "seed-30", "planId": "hib", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-31", "planId": "hib", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-32", "planId": "hib", "doseNumber": 4, "member": "lalynn", "dateGiven": "2025-06-14", "note": "", "cost": null}, {"id": "seed-33", "planId": "pcv-ipd", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "PCV 15", "cost": null}, {"id": "seed-34", "planId": "pcv-ipd", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"id": "seed-35", "planId": "pcv-ipd", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "PCV 20", "cost": 12000.0}, {"id": "seed-36", "planId": "pcv-ipd", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "PCV 15", "cost": null}, {"id": "seed-37", "planId": "pcv-ipd", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"id": "seed-38", "planId": "pcv-ipd", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "PCV 20", "cost": null}, {"id": "seed-39", "planId": "pcv-ipd", "doseNumber": 3, "member": "lalynn", "dateGiven": "2024-12-14", "note": "PCV 15", "cost": null}, {"id": "seed-40", "planId": "pcv-ipd", "doseNumber": 3, "member": "gawynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"id": "seed-41", "planId": "pcv-ipd", "doseNumber": 3, "member": "kanynn", "dateGiven": "2026-05-23", "note": "PCV 20", "cost": null}, {"id": "seed-42", "planId": "pcv-ipd", "doseNumber": 4, "member": "gawynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"id": "seed-43", "planId": "pcv-ipd", "doseNumber": 4, "member": "kanynn", "dateGiven": "2026-11-21", "note": "PCV 20", "cost": null}, {"id": "seed-44", "planId": "rota-vaccine", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-02-17", "note": "", "cost": null}, {"id": "seed-45", "planId": "rota-vaccine", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"id": "seed-46", "planId": "rota-vaccine", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-01-19", "note": "Rota", "cost": 2000.0}, {"id": "seed-47", "planId": "rota-vaccine", "doseNumber": 2, "member": "lalynn", "dateGiven": "2024-04-20", "note": "", "cost": null}, {"id": "seed-48", "planId": "rota-vaccine", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"id": "seed-49", "planId": "rota-vaccine", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-03-23", "note": "Rota", "cost": null}, {"id": "seed-50", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-09-14", "note": "", "cost": null}, {"id": "seed-51", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-52", "planId": "japanese-encephalitis-je", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-03-10", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-53", "planId": "japanese-encephalitis-je", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"id": "seed-54", "planId": "mmr", "doseNumber": 1, "member": "lalynn", "dateGiven": "2024-12-14", "note": "", "cost": null}, {"id": "seed-55", "planId": "mmr", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-56", "planId": "mmr", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-11-21", "note": "Kid Vaccine2", "cost": null}, {"id": "seed-57", "planId": "mmr", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "seed-58", "planId": "varicella", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"id": "seed-59", "planId": "varicella", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "seed-60", "planId": "hepatitis-a-hav", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-09-19", "note": "", "cost": null}, {"id": "seed-61", "planId": "hepatitis-a-hav", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-03-23", "note": "", "cost": null}, {"id": "seed-62", "planId": "ev71", "doseNumber": 1, "member": "lalynn", "dateGiven": "2025-02-15", "note": "", "cost": null}, {"id": "seed-63", "planId": "ev71", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"id": "seed-64", "planId": "ev71", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-06-27", "note": "EV71", "cost": 6100.0}, {"id": "seed-65", "planId": "ev71", "doseNumber": 2, "member": "lalynn", "dateGiven": "2025-03-15", "note": "", "cost": null}, {"id": "seed-66", "planId": "ev71", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"id": "seed-67", "planId": "ev71", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-07-29", "note": "EV71", "cost": null}, {"id": "seed-68", "planId": "menb", "doseNumber": 1, "member": "lalynn", "dateGiven": "2026-04-25", "note": "MenB", "cost": 7600.0}, {"id": "seed-69", "planId": "menb", "doseNumber": 1, "member": "gawynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"id": "seed-70", "planId": "menb", "doseNumber": 1, "member": "kanynn", "dateGiven": "2025-04-25", "note": "MenB", "cost": 10900.0}, {"id": "seed-71", "planId": "menb", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-06-27", "note": "MenB", "cost": null}, {"id": "seed-72", "planId": "menb", "doseNumber": 2, "member": "gawynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"id": "seed-73", "planId": "menb", "doseNumber": 2, "member": "kanynn", "dateGiven": "2026-04-09", "note": "MenB", "cost": null}, {"id": "seed-74", "planId": "menb", "doseNumber": 3, "member": "gawynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"id": "seed-75", "planId": "menb", "doseNumber": 3, "member": "kanynn", "dateGiven": "2027-11-20", "note": "MenB", "cost": null}, {"id": "seed-76", "planId": "rabies", "doseNumber": 1, "member": "lalynn", "dateGiven": "2026-05-16", "note": "", "cost": 604.0}, {"id": "seed-77", "planId": "rabies", "doseNumber": 2, "member": "lalynn", "dateGiven": "2026-05-23", "note": "", "cost": 604.0}, {"id": "seed-78", "planId": "dengue-fever", "doseNumber": 1, "member": "lalynn", "dateGiven": "2027-12-18", "note": "Dengue fever", "cost": 4900.0}, {"id": "flu-la-1", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2024-07-20", "note": "", "cost": null}, {"id": "flu-ga-1", "planId": "influenza", "doseNumber": null, "member": "gawynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"id": "flu-ka-1", "planId": "influenza", "doseNumber": null, "member": "kanynn", "dateGiven": "2026-06-27", "note": "Influenza", "cost": 650.0}, {"id": "flu-la-2", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2024-08-17", "note": "", "cost": null}, {"id": "flu-ga-2", "planId": "influenza", "doseNumber": null, "member": "gawynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"id": "flu-ka-2", "planId": "influenza", "doseNumber": null, "member": "kanynn", "dateGiven": "2026-07-29", "note": "Influenza", "cost": 650.0}, {"id": "flu-la-3", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2025-07-20", "note": "", "cost": null}, {"id": "flu-la-4", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2026-04-25", "note": "", "cost": 352.0}, {"id": "flu-la-5", "planId": "influenza", "doseNumber": null, "member": "lalynn", "dateGiven": "2027-04-24", "note": "", "cost": null}, {"id": "seed-88", "planId": "rsv", "doseNumber": 1, "member": "gawynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}, {"id": "seed-89", "planId": "rsv", "doseNumber": 1, "member": "kanynn", "dateGiven": "2026-04-07", "note": "", "cost": 12500.0}];
 const DENTIST_RECORDS_SEED = [{"member": "lalynn", "date": "2025-01-26", "milk": 13.0, "permanent": null, "decayed": null}, {"member": "lalynn", "date": "2025-07-27", "milk": 16.0, "permanent": null, "decayed": null}, {"member": "lalynn", "date": "2026-01-25", "milk": 20.0, "permanent": null, "decayed": null}];
 
+// เกณฑ์มาตรฐาน WHO Child Growth Standards (0-60 เดือน) — แต่ละแถว [อายุเดือน, P3, P15, P50, P85, P97]
+// น้ำหนัก (กก.), ส่วนสูง/ความยาว (ซม.), เส้นรอบศีรษะ (ซม.) — ที่มา who.int/tools/child-growth-standards
+const GROWTH_REFERENCE = {
+  weight: {
+    male: [[0,2.5,2.9,3.3,3.9,4.3],[6,6.4,7.1,7.9,8.9,9.7],[12,7.8,8.6,9.6,10.8,11.8],[18,8.9,9.7,10.9,12.3,13.5],[24,9.8,10.8,12.2,13.7,15.1],[30,10.7,11.8,13.3,15.0,16.6],[36,11.4,12.7,14.3,16.3,18.0],[42,12.2,13.5,15.3,17.5,19.4],[48,12.9,14.3,16.3,18.7,20.9],[54,13.6,15.2,17.3,19.9,22.3],[60,14.3,16.0,18.3,21.1,23.8]],
+    female: [[0,2.4,2.8,3.2,3.7,4.2],[6,5.8,6.4,7.3,8.3,9.2],[12,7.1,7.9,8.9,10.2,11.3],[18,8.2,9.0,10.2,11.6,13.0],[24,9.2,10.1,11.5,13.1,14.6],[30,10.1,11.2,12.7,14.5,16.2],[36,11.0,12.1,13.9,15.9,17.8],[42,11.8,13.1,15.0,17.3,19.5],[48,12.5,14.0,16.1,18.6,21.1],[54,13.7,15.4,17.9,20.9,23.9],[60,14.0,15.7,18.2,21.3,24.4]]
+  },
+  height: {
+    male: [[0,46.3,47.9,49.9,51.8,53.4],[6,63.6,65.4,67.6,69.8,71.6],[12,71.3,73.3,75.7,78.2,80.2],[18,77.2,79.5,82.3,85.1,87.3],[24,82.1,84.6,87.8,91.0,93.6],[30,85.5,88.4,91.9,95.5,98.3],[36,89.1,92.2,96.1,99.9,103.1],[42,92.4,95.7,99.9,104.0,107.3],[48,95.4,99.0,103.3,107.7,111.2],[54,98.4,102.1,106.7,111.2,115.0],[60,101.2,105.2,110.0,114.8,118.7]],
+    female: [[0,45.6,47.2,49.1,51.1,52.7],[6,61.5,63.4,65.7,68.1,70.0],[12,69.2,71.3,74.0,76.7,78.9],[18,75.2,77.7,80.7,83.7,86.2],[24,80.3,83.1,86.4,89.8,92.5],[30,84.0,87.0,90.7,94.3,97.3],[36,87.9,91.1,95.1,99.0,102.2],[42,91.4,94.8,99.0,103.3,106.7],[48,94.6,98.3,102.7,107.2,110.8],[54,97.6,101.5,106.2,110.9,114.7],[60,100.5,104.5,109.4,114.4,118.4]]
+  },
+  head: {
+    male: [[0,32.1,33.1,34.5,35.8,36.9],[6,41.0,42.1,43.3,44.6,45.6],[12,43.6,44.7,46.1,47.4,48.5],[18,44.9,46.0,47.4,48.7,49.9],[24,45.7,46.8,48.3,49.7,50.8],[30,46.3,47.5,48.9,50.4,51.6],[36,46.8,48.0,49.5,50.9,52.1],[42,47.2,48.4,49.9,51.4,52.6],[48,47.5,48.7,50.2,51.7,53.0],[54,47.7,49.0,50.5,52.0,53.3],[60,47.9,49.2,50.7,52.3,53.5]],
+    female: [[0,31.7,32.7,33.9,35.1,36.1],[6,39.7,40.8,42.2,43.5,44.6],[12,42.3,43.5,44.9,46.3,47.5],[18,43.6,44.8,46.2,47.7,48.8],[24,44.6,45.7,47.2,48.6,49.8],[30,45.3,46.5,47.9,49.4,50.6],[36,45.9,47.0,48.5,50.0,51.2],[42,46.3,47.5,49.0,50.4,51.6],[48,46.7,47.9,49.3,50.8,52.0],[54,47.0,48.2,49.6,51.1,52.3],[60,47.2,48.4,49.9,51.4,52.6]]
+  }
+};
+const GROWTH_METRICS = [
+  { key: 'weight', label: 'น้ำหนัก', unit: 'กก.', field: 'weight', hasRef: true },
+  { key: 'height', label: 'ส่วนสูง', unit: 'ซม.', field: 'height', hasRef: true },
+  { key: 'head', label: 'ขนาดศีรษะ', unit: 'ซม.', field: 'head', hasRef: true },
+  { key: 'chest', label: 'ขนาดหน้าอก', unit: 'ซม.', field: 'chest', hasRef: false }
+];
+const GROWTH_COLORS = ['#0072B2', '#D55E00', '#009E73', '#CC79A7', '#E69F00', '#56B4E9', '#7A5C2E', '#8E44AD'];
+
 let members = [];
 let children = [];
 let adults = [];
@@ -605,6 +649,9 @@ let selectedGrowthChild = null;
 let editingDentistId = null;
 let editingCheckupId = null;
 let editingGrowthId = null;
+let growthChartSelected = [];
+let growthChartMetric = 'weight';
+let growthShowRefManual = null; // null = อัตโนมัติ, true/false = ผู้ใช้บังคับเอง
 
 function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -752,6 +799,7 @@ async function load() {
   if (!selectedDentistChild && (children.length || adults.length)) selectedDentistChild = (children[0] || adults[0]).slug;
   if (!selectedCheckupChild && (children.length || adults.length)) selectedCheckupChild = (children[0] || adults[0]).slug;
   if (!selectedGrowthChild && (children.length || adults.length)) selectedGrowthChild = (children[0] || adults[0]).slug;
+  if (!growthChartSelected.length && children.length) growthChartSelected = children.map(c => c.slug);
   render();
 }
 
@@ -1290,6 +1338,188 @@ function cancelGrowthEdit() {
   document.getElementById('gr-cancel-edit').style.display = 'none';
 }
 
+function ageInMonthsDecimal(birthISO, eventISO) {
+  if (!birthISO || !eventISO) return null;
+  const b = new Date(birthISO + 'T00:00:00'), e = new Date(eventISO + 'T00:00:00');
+  if (isNaN(b) || isNaN(e)) return null;
+  return (e - b) / (1000 * 60 * 60 * 24 * 30.4368);
+}
+
+function interpolateRefRow(rows, month) {
+  // rows: [[month,p3,p15,p50,p85,p97], ...] เรียงจากน้อยไปมาก — คืนค่าประมาณด้วยการเทียบเชิงเส้นระหว่าง 2 จุดที่ใกล้ที่สุด
+  if (month <= rows[0][0]) return rows[0];
+  if (month >= rows[rows.length - 1][0]) return rows[rows.length - 1];
+  for (let i = 0; i < rows.length - 1; i++) {
+    const a = rows[i], b = rows[i + 1];
+    if (month >= a[0] && month <= b[0]) {
+      const t = (month - a[0]) / (b[0] - a[0]);
+      return a.map((v, idx) => idx === 0 ? month : v + (b[idx] - v) * t);
+    }
+  }
+  return rows[rows.length - 1];
+}
+
+function renderGrowthChart() {
+  const membersWrap = document.getElementById('growth-chart-members');
+  const metricWrap = document.getElementById('growth-metric-tabs');
+  const chartWrap = document.getElementById('growth-chart-wrap');
+  if (!membersWrap || !metricWrap || !chartWrap) return;
+  const allMembers = [...children, ...adults];
+
+  // --- ตัวเลือกสมาชิก (ติ๊กได้หลายคน) ---
+  membersWrap.innerHTML = '';
+  if (!allMembers.length) {
+    membersWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลสมาชิก ไปที่แท็บ "ตั้งค่า" ก่อน</p>';
+    chartWrap.innerHTML = '';
+    return;
+  }
+  allMembers.forEach((m, idx) => {
+    const color = GROWTH_COLORS[idx % GROWTH_COLORS.length];
+    const checked = growthChartSelected.includes(m.slug);
+    const label = document.createElement('label');
+    label.className = 'growth-member-chip';
+    label.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''}><span class="swatch" style="background:${color};"></span>${childLabel(m)}`;
+    label.querySelector('input').addEventListener('change', (e) => {
+      if (e.target.checked) { if (!growthChartSelected.includes(m.slug)) growthChartSelected.push(m.slug); }
+      else { growthChartSelected = growthChartSelected.filter(s => s !== m.slug); }
+      renderGrowthChart();
+    });
+    membersWrap.appendChild(label);
+  });
+
+  // --- ตัวเลือกตัวชี้วัด ---
+  metricWrap.innerHTML = '';
+  GROWTH_METRICS.forEach(gm => {
+    const btn = document.createElement('button');
+    btn.className = 'child-tab' + (growthChartMetric === gm.key ? ' active' : '');
+    btn.textContent = gm.label;
+    btn.addEventListener('click', () => { growthChartMetric = gm.key; renderGrowthChart(); });
+    metricWrap.appendChild(btn);
+  });
+
+  const metric = GROWTH_METRICS.find(g => g.key === growthChartMetric) || GROWTH_METRICS[0];
+  const selectedMembers = allMembers.filter(m => growthChartSelected.includes(m.slug));
+  const refCheckbox = document.getElementById('growth-show-ref');
+
+  // เพศทั้งหมดของคนที่เลือก (เฉพาะเด็ก เพราะเกณฑ์ WHO ใช้กับเด็ก 0-5 ปี)
+  const selectedChildrenOnly = selectedMembers.filter(m => children.some(c => c.slug === m.slug));
+  const sexesPresent = [...new Set(selectedChildrenOnly.map(m => m.gender).filter(Boolean))];
+  const refAvailable = metric.hasRef && selectedChildrenOnly.length > 0;
+  const autoShowRef = refAvailable && sexesPresent.length === 1;
+  const showRef = refAvailable && (growthShowRefManual != null ? growthShowRefManual : autoShowRef);
+
+  if (refCheckbox) {
+    refCheckbox.disabled = !refAvailable;
+    refCheckbox.checked = showRef;
+    refCheckbox.onchange = () => { growthShowRefManual = refCheckbox.checked; renderGrowthChart(); };
+    refCheckbox.title = refAvailable ? '' : 'ต้องเลือกเด็ก (ไม่เกิน 5 ปี) และระบุเพศไว้ในตั้งค่าก่อน ถึงจะมีเกณฑ์เทียบให้';
+  }
+
+  if (!selectedMembers.length) {
+    chartWrap.innerHTML = '<p class="growth-chart-empty">เลือกอย่างน้อย 1 คนด้านบน เพื่อแสดงกราฟ</p>';
+    return;
+  }
+
+  // --- เตรียมข้อมูลเส้นของแต่ละคน ---
+  const series = selectedMembers.map(m => {
+    const idx = allMembers.findIndex(x => x.slug === m.slug);
+    const color = GROWTH_COLORS[idx % GROWTH_COLORS.length];
+    const pts = growthRecords
+      .filter(r => r.member === m.slug && r[metric.field] != null)
+      .map(r => ({ month: ageInMonthsDecimal(m.birthDate, r.date), value: r[metric.field], date: r.date }))
+      .filter(p => p.month != null && p.month >= 0)
+      .sort((a, b) => a.month - b.month);
+    return { member: m, color, pts };
+  }).filter(s => s.pts.length);
+
+  if (!series.length) {
+    chartWrap.innerHTML = '<p class="growth-chart-empty">คนที่เลือกยังไม่มีข้อมูล "' + metric.label + '" ที่บันทึกไว้</p>';
+    return;
+  }
+
+  // --- คำนวณช่วงแกน ---
+  let maxMonth = 60;
+  series.forEach(s => s.pts.forEach(p => { if (p.month > maxMonth) maxMonth = p.month; }));
+  maxMonth = Math.ceil(maxMonth / 6) * 6;
+
+  const refRowsAtMonths = [];
+  if (showRef) {
+    for (const sx of sexesPresent) {
+      const rows = GROWTH_REFERENCE[metric.key][sx === 'male' ? 'male' : 'female'];
+      for (let mo = 0; mo <= Math.min(maxMonth, 60); mo += 2) refRowsAtMonths.push(interpolateRefRow(rows, mo));
+    }
+  }
+
+  let minVal = Infinity, maxVal = -Infinity;
+  series.forEach(s => s.pts.forEach(p => { minVal = Math.min(minVal, p.value); maxVal = Math.max(maxVal, p.value); }));
+  refRowsAtMonths.forEach(r => { minVal = Math.min(minVal, r[1]); maxVal = Math.max(maxVal, r[4] != null ? r[4] : r[5]); });
+  if (showRef) refRowsAtMonths.forEach(r => { maxVal = Math.max(maxVal, r[5]); });
+  const pad = (maxVal - minVal) * 0.1 || 1;
+  minVal = Math.max(0, minVal - pad);
+  maxVal = maxVal + pad;
+
+  // --- วาด SVG ---
+  const W = 720, H = 340, marginL = 46, marginR = 16, marginT = 16, marginB = 34;
+  const plotW = W - marginL - marginR, plotH = H - marginT - marginB;
+  const xScale = (mo) => marginL + (mo / maxMonth) * plotW;
+  const yScale = (v) => marginT + plotH - ((v - minVal) / (maxVal - minVal)) * plotH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;font-family:'Sarabun',sans-serif;" role="img" aria-label="กราฟ${metric.label}ตามอายุ">`;
+
+  // grid + x axis labels (ทุก 6 เดือน)
+  svg += `<g>`;
+  for (let mo = 0; mo <= maxMonth; mo += 6) {
+    const x = xScale(mo);
+    svg += `<line x1="${x}" y1="${marginT}" x2="${x}" y2="${marginT + plotH}" stroke="var(--border)" stroke-width="1" opacity="0.5"/>`;
+    svg += `<text x="${x}" y="${H - 10}" font-size="10" fill="var(--text-muted)" text-anchor="middle">${mo}${mo === 0 ? 'ด.' : ''}</text>`;
+  }
+  // y axis ticks (5 ระดับ)
+  for (let i = 0; i <= 4; i++) {
+    const v = minVal + (maxVal - minVal) * (i / 4);
+    const y = yScale(v);
+    svg += `<line x1="${marginL}" y1="${y}" x2="${W - marginR}" y2="${y}" stroke="var(--border)" stroke-width="1" opacity="0.35"/>`;
+    svg += `<text x="${marginL - 6}" y="${y + 3}" font-size="10" fill="var(--text-muted)" text-anchor="end">${v.toFixed(metric.key === 'weight' ? 1 : 0)}</text>`;
+  }
+  svg += `</g>`;
+
+  // เกณฑ์มาตรฐาน (แถบ P3-P97 + เส้นกลาง P50) ต่อเพศที่ปรากฏ
+  if (showRef) {
+    sexesPresent.forEach(sx => {
+      const rows = GROWTH_REFERENCE[metric.key][sx === 'male' ? 'male' : 'female'];
+      const pts = [];
+      for (let mo = 0; mo <= Math.min(maxMonth, 60); mo += 2) pts.push(interpolateRefRow(rows, mo));
+      const bandColor = sx === 'male' ? '#56B4E9' : '#CC79A7';
+      const topPath = pts.map((r, i) => `${i === 0 ? 'M' : 'L'} ${xScale(r[0])} ${yScale(r[5])}`).join(' ');
+      const botPath = pts.slice().reverse().map(r => `L ${xScale(r[0])} ${yScale(r[1])}`).join(' ');
+      svg += `<path d="${topPath} ${botPath} Z" fill="${bandColor}" opacity="0.13" stroke="none"/>`;
+      const medianPath = pts.map((r, i) => `${i === 0 ? 'M' : 'L'} ${xScale(r[0])} ${yScale(r[3])}`).join(' ');
+      svg += `<path d="${medianPath}" fill="none" stroke="${bandColor}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.6"/>`;
+    });
+  }
+
+  // เส้นข้อมูลจริงของแต่ละคน
+  series.forEach(s => {
+    const linePath = s.pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xScale(p.month)} ${yScale(p.value)}`).join(' ');
+    svg += `<path d="${linePath}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s.pts.forEach(p => {
+      svg += `<circle cx="${xScale(p.month)}" cy="${yScale(p.value)}" r="4" fill="${s.color}" stroke="var(--card)" stroke-width="1.5"><title>${childLabel(s.member)}: ${p.value} ${metric.unit} (${fmtDateStr(p.date)})</title></circle>`;
+    });
+  });
+
+  svg += `</svg>`;
+  chartWrap.innerHTML = svg;
+
+  // legend
+  const legendParts = series.map(s => `<span><span class="swatch" style="background:${s.color};"></span>${childLabel(s.member)}</span>`);
+  if (showRef) {
+    sexesPresent.forEach(sx => {
+      const bandColor = sx === 'male' ? '#56B4E9' : '#CC79A7';
+      legendParts.push(`<span><span class="swatch" style="background:${bandColor};opacity:0.5;"></span>เกณฑ์มาตรฐาน (${sx === 'male' ? 'ชาย' : 'หญิง'}) P3-P97</span>`);
+    });
+  }
+  chartWrap.innerHTML += `<div class="growth-legend">${legendParts.join('')}</div>`;
+}
+
 function refreshChildMemberSelect(sel) {
   sel.innerHTML = '';
   members.forEach(m => sel.appendChild(new Option(m.label, m.key)));
@@ -1575,6 +1805,7 @@ function render() {
   renderDentistTab();
   renderCheckupTab();
   renderGrowthTab();
+  renderGrowthChart();
   renderExpenses();
   renderChildrenSetup();
   renderAdultsSetup();
