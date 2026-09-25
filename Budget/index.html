@@ -256,7 +256,11 @@
       </div>
       <div id="expense-view-cycle-wrap" style="display:none;">
         <p class="muted" style="margin:0 0 10px;">รวมรายจ่ายเงินสด/โอนของเดือนนี้ + บิลบัตรเครดิตที่ถูกกดชำระในเดือนนี้ (ตามรายการจริงที่อยู่ในบิลนั้น) เป็นก้อนเดียว</p>
-        <p id="cycle-view-total" style="font-weight:600;margin:0 0 10px;">รวม: ฿0</p>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px;flex-wrap:wrap;">
+          <p id="cycle-view-total" style="font-weight:600;margin:0;">รวม: ฿0</p>
+          <button type="button" id="cycle-diag-toggle" class="tab" style="font-size:12px;">🔍 ตรวจสอบยอด (เทียบกับการ์ดด้านบน)</button>
+        </div>
+        <div id="cycle-diag-panel" style="display:none;margin:0 0 16px;padding:14px;background:var(--paper,#F6F3EC);border:1px solid var(--border,#E4DFD1);border-radius:12px;font-size:13px;overflow-x:auto;"></div>
         <div class="charts">
           <div>
             <p class="secondary-text" style="margin:0 0 6px;">ตามหมวดหมู่</p>
@@ -3337,7 +3341,97 @@ function renderLedger() {
   }));
 }
 
+function renderCycleDiagnostic() {
+  const ym = currentViewMonth;
+  const panel = document.getElementById('cycle-diag-panel');
+  if (!panel) return;
+  const flow = cashFlowForMonth(ym);
+  const topTotal = flow.expense;
+
+  // ส่วนที่ 1: เงินสด/โอน
+  const topCashEntries = entries.filter(e => {
+    if (e.date.slice(0, 7) !== ym) return false;
+    if (getCat(e.category).kind === 'income') return false;
+    const isCardPayment = e.payment && e.payment !== 'cash' && cards.some(c => c.id === e.payment);
+    return !isCardPayment;
+  });
+  const cycleCashEntries = entries.filter(e => getCat(e.category).kind === 'expense' && e.payment === 'cash' && e.date.slice(0, 7) === ym);
+  const cycleCashIds = new Set(cycleCashEntries.map(e => e.id));
+  const onlyInTop = topCashEntries.filter(e => !cycleCashIds.has(e.id));
+  const topCashSum = topCashEntries.reduce((s, e) => s + e.amount, 0);
+  const cycleCashSum = cycleCashEntries.reduce((s, e) => s + e.amount, 0);
+
+  // ส่วนที่ 2: บัตรเครดิต
+  let cardRows = [];
+  let topCardSum = 0, cycleCardSum = 0;
+  cards.forEach(c => {
+    const cardPayments = walletTransactions.filter(t => t.note === 'ชำระบัตร ' + c.name).sort((a, b) => a.date.localeCompare(b.date));
+    cardPayments.forEach((t, i) => {
+      if (t.date.slice(0, 7) !== ym) return;
+      const billAmount = Math.abs(t.amount);
+      topCardSum += billAmount;
+      let matched;
+      if (t.cycleFrom && t.cycleTo) {
+        matched = entries.filter(e => e.payment === c.id && e.date >= t.cycleFrom && e.date <= t.cycleTo);
+      } else {
+        const prevPaymentDate = i > 0 ? cardPayments[i - 1].date : '';
+        let upperBound = t.date;
+        if (i === cardPayments.length - 1) {
+          const derivedClose = new Date(c.cycleStart + 'T00:00:00');
+          derivedClose.setDate(derivedClose.getDate() - 1);
+          upperBound = toISO(derivedClose);
+        }
+        matched = entries.filter(e => e.payment === c.id && (!prevPaymentDate || e.date > prevPaymentDate) && e.date <= upperBound);
+      }
+      const reconstructedSum = matched.reduce((s, e) => s + e.amount, 0);
+      cycleCardSum += reconstructedSum;
+      cardRows.push({ card: c.name, paidDate: t.date, billAmount, reconstructedSum, diff: reconstructedSum - billAmount, matched });
+    });
+  });
+
+  const cycleTotal = cycleCashSum + cycleCardSum;
+  let html = '';
+  html += `<p style="margin:0 0 8px;font-weight:600;">เทียบยอด เดือน ${monthLabel(ym)}</p>`;
+  html += `<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px;">
+    <tr><td style="padding:3px 6px;">การ์ดด้านบน (เงินออกจริง)</td><td style="text-align:right;padding:3px 6px;font-weight:600;">${fmt(topTotal)}</td></tr>
+    <tr><td style="padding:3px 6px;">กราฟตามรอบการจ่ายจริง</td><td style="text-align:right;padding:3px 6px;font-weight:600;">${fmt(cycleTotal)}</td></tr>
+    <tr><td style="padding:3px 6px;color:var(--rust,#B14A34);">ส่วนต่าง (กราฟ − การ์ดบน)</td><td style="text-align:right;padding:3px 6px;font-weight:600;color:var(--rust,#B14A34);">${fmt(cycleTotal - topTotal)}</td></tr>
+  </table>`;
+
+  html += `<p style="margin:0 0 6px;font-weight:600;">1) ส่วนเงินสด/โอน</p>`;
+  html += `<p class="muted" style="margin:0 0 6px;">การ์ดบนนับ ${fmt(topCashSum)} · กราฟรอบจ่ายนับ ${fmt(cycleCashSum)} (กราฟนับเฉพาะรายการที่ระบุวิธีจ่ายเป็น "เงินสด" ตรงๆ เท่านั้น)</p>`;
+  if (onlyInTop.length) {
+    html += `<p style="margin:0 0 4px;">รายการที่การ์ดบนนับ แต่กราฟรอบจ่ายไม่นับ (เพราะวิธีจ่ายไม่ใช่ "เงินสด" ตรงๆ):</p>`;
+    html += '<ul style="margin:0 0 10px;padding-left:18px;">' + onlyInTop.map(e => `<li>${e.date} · ${getCat(e.category).label} · ${fmt(e.amount)} · วิธีจ่าย: ${e.payment || '(ไม่ระบุ)'}</li>`).join('') + '</ul>';
+  } else {
+    html += `<p class="muted" style="margin:0 0 10px;">ไม่มีส่วนต่างจากส่วนนี้</p>`;
+  }
+
+  html += `<p style="margin:0 0 6px;font-weight:600;">2) ส่วนบัตรเครดิต</p>`;
+  if (cardRows.length) {
+    html += `<p class="muted" style="margin:0 0 6px;">การ์ดบนนับ ${fmt(topCardSum)} (ยอดบิลที่กดจ่ายจริง) · กราฟรอบจ่ายนับ ${fmt(cycleCardSum)} (ผลรวมรายการซื้อที่ไล่ย้อนเจอในรอบบิลนั้น)</p>`;
+    html += '<table style="width:100%;border-collapse:collapse;font-size:13px;"><tr style="text-align:left;color:var(--text-secondary,#62707E);"><th style="padding:3px 6px;">บัตร</th><th style="padding:3px 6px;">วันที่จ่าย</th><th style="padding:3px 6px;text-align:right;">ยอดบิลจ่ายจริง</th><th style="padding:3px 6px;text-align:right;">รวมรายการที่ไล่เจอ</th><th style="padding:3px 6px;text-align:right;">ส่วนต่าง</th></tr>';
+    cardRows.forEach(r => {
+      html += `<tr><td style="padding:3px 6px;">${r.card}</td><td style="padding:3px 6px;">${r.paidDate}</td><td style="padding:3px 6px;text-align:right;">${fmt(r.billAmount)}</td><td style="padding:3px 6px;text-align:right;">${fmt(r.reconstructedSum)}</td><td style="padding:3px 6px;text-align:right;${r.diff !== 0 ? 'color:var(--rust,#B14A34);font-weight:600;' : ''}">${fmt(r.diff)}</td></tr>`;
+    });
+    html += '</table>';
+    const diffCards = cardRows.filter(r => r.diff !== 0);
+    if (diffCards.length) {
+      html += `<p style="margin:10px 0 4px;">รายการที่ระบบไล่เจอในรอบบิลของใบที่มีส่วนต่าง (เช็คว่ามีรายการเกิน/ขาดจากบิลจริงไหม):</p>`;
+      diffCards.forEach(r => {
+        html += `<p class="muted" style="margin:4px 0 2px;">บัตร ${r.card} (จ่าย ${r.paidDate}):</p>`;
+        html += '<ul style="margin:0 0 10px;padding-left:18px;">' + r.matched.map(e => `<li>${e.date} · ${getCat(e.category).label} · ${fmt(e.amount)}</li>`).join('') + '</ul>';
+      });
+    }
+  } else {
+    html += `<p class="muted" style="margin:0 0 10px;">ไม่มีการจ่ายบิลบัตรเครดิตในเดือนนี้</p>`;
+  }
+
+  panel.innerHTML = html;
+}
 function render() {
+  const diagPanel = document.getElementById('cycle-diag-panel');
+  if (diagPanel) diagPanel.style.display = 'none';
   document.getElementById('month-label').textContent = monthLabel(currentViewMonth);
   const flow = cashFlowForMonth(currentViewMonth);
   document.getElementById('m-income').textContent = fmt(flow.income);
@@ -4108,6 +4202,16 @@ document.getElementById('expense-view-cycle').addEventListener('click', () => {
   document.getElementById('expense-view-cycle-wrap').style.display = '';
   if (cycleCatChart) cycleCatChart.resize();
   if (cycleMemberChart) cycleMemberChart.resize();
+});
+document.getElementById('cycle-diag-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('cycle-diag-panel');
+  const showing = panel.style.display !== 'none';
+  if (showing) {
+    panel.style.display = 'none';
+  } else {
+    renderCycleDiagnostic();
+    panel.style.display = '';
+  }
 });
 
 document.getElementById('month-prev').addEventListener('click', () => {
