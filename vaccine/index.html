@@ -154,7 +154,8 @@
   .banner-due .due-date-head.overdue { color: #C0402A; }
   .banner-due .due-subrow { padding: 2px 0 2px 18px; }
   .banner-due .due-subrow.overdue { color: #C0402A; font-weight: 600; }
-  .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .setup-row { display: grid; grid-template-columns: 100px 1fr 1fr 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .setup-row.setup-row-3 { grid-template-columns: 100px 1fr 1fr; }
   @media (max-width: 640px) {
     .setup-row { grid-template-columns: 1fr; }
     .g2, .g3 { grid-template-columns: 1fr; }
@@ -201,6 +202,7 @@
     <button class="page-tab" data-page="adult-vaccine">วัคซีนผู้ใหญ่</button>
     <button class="page-tab" data-page="dentist">ทันตกรรม</button>
     <button class="page-tab" data-page="checkup">ตรวจสุขภาพ</button>
+    <button class="page-tab" data-page="growth">การเจริญเติบโต</button>
     <button class="page-tab" data-page="expenses">ค่าใช้จ่าย</button>
     <button class="page-tab" data-page="setup">ตั้งค่า</button>
   </nav>
@@ -321,6 +323,51 @@
     </section>
   </div>
 
+  <div id="page-growth" class="page">
+    <section>
+      <div class="card">
+        <h2>การเจริญเติบโต</h2>
+        <p class="muted" style="margin:0 0 10px;">บันทึกน้ำหนัก/ส่วนสูง เพื่อดูพัฒนาการย้อนหลัง</p>
+        <div class="child-tabs" id="growth-child-tabs"></div>
+        <div id="growth-list"></div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="gr-date">วันที่วัด</label>
+            <input type="date" id="gr-date">
+          </div>
+          <div>
+            <label class="field-label" for="gr-weight">น้ำหนัก (กก.)</label>
+            <input type="number" step="0.01" id="gr-weight" placeholder="ไม่บังคับ" min="0">
+          </div>
+        </div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="gr-height">ส่วนสูง (ซม.)</label>
+            <input type="number" step="0.1" id="gr-height" placeholder="ไม่บังคับ" min="0">
+          </div>
+          <div>
+            <label class="field-label" for="gr-head">ขนาดศีรษะ (ซม.)</label>
+            <input type="number" step="0.1" id="gr-head" placeholder="ไม่บังคับ" min="0">
+          </div>
+        </div>
+        <div class="form-grid g2">
+          <div>
+            <label class="field-label" for="gr-chest">ขนาดหน้าอก (ซม.)</label>
+            <input type="number" step="0.1" id="gr-chest" placeholder="ไม่บังคับ" min="0">
+          </div>
+          <div>
+            <label class="field-label" for="gr-note">หมายเหตุ</label>
+            <input type="text" id="gr-note" placeholder="ไม่บังคับ">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button class="btn btn-primary" id="gr-add" style="flex:1;">+ บันทึกการเจริญเติบโต</button>
+          <button class="btn" id="gr-cancel-edit" style="display:none;">ยกเลิก</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <div id="page-expenses" class="page">
     <section>
       <div class="card">
@@ -352,6 +399,13 @@
           <input type="text" id="ch-slug" placeholder="ชื่อ (ภาษาอังกฤษ ไม่เว้นวรรค) เช่น newborn">
           <select id="ch-member"></select>
           <input type="date" id="ch-birth">
+        </div>
+        <div class="form-grid g3">
+          <select id="ch-gender">
+            <option value="">เพศ (ไม่บังคับ)</option>
+            <option value="male">ชาย</option>
+            <option value="female">หญิง</option>
+          </select>
         </div>
         <button class="btn btn-primary" id="ch-add">+ เพิ่มสมาชิกใหม่</button>
       </div>
@@ -498,6 +552,7 @@ const VACCINE_RECORDS_KEY = 'vaccine-records';
 const DENTIST_RECORDS_KEY = 'dentist-records';
 const OTHER_EXPENSES_KEY = 'other-expenses';
 const CHECKUP_RECORDS_KEY = 'checkup-records';
+const GROWTH_RECORDS_KEY = 'growth-records';
 const ADULTS_KEY = 'vaccine-adults';
 const ADULT_VACCINE_CATALOG_KEY = 'adult-vaccine-catalog';
 
@@ -517,6 +572,7 @@ const defaultVaccineRecords = () => VACCINE_RECORDS_SEED;
 const defaultDentistRecords = () => DENTIST_RECORDS_SEED;
 const defaultOtherExpenses = () => [];
 const defaultCheckupRecords = () => [];
+const defaultGrowthRecords = () => [];
 const defaultAdultVaccineCatalog = () => ADULT_VACCINE_CATALOG_SEED;
 
 const ADULT_VACCINE_CATALOG_SEED = [
@@ -542,10 +598,13 @@ let vaccineRecords = [];
 let dentistRecords = [];
 let otherExpenses = [];
 let checkupRecords = [];
+let growthRecords = [];
 let selectedDentistChild = null;
 let selectedCheckupChild = null;
+let selectedGrowthChild = null;
 let editingDentistId = null;
 let editingCheckupId = null;
+let editingGrowthId = null;
 
 function fmt(n) { return '฿' + Number(n).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
@@ -588,6 +647,7 @@ async function saveVaccineRecords() { try { await window.storage.set(VACCINE_REC
 async function saveDentistRecords() { try { await window.storage.set(DENTIST_RECORDS_KEY, JSON.stringify(dentistRecords)); } catch (e) { console.error(e); } }
 async function saveOtherExpenses() { try { await window.storage.set(OTHER_EXPENSES_KEY, JSON.stringify(otherExpenses)); } catch (e) { console.error(e); } }
 async function saveCheckupRecords() { try { await window.storage.set(CHECKUP_RECORDS_KEY, JSON.stringify(checkupRecords)); } catch (e) { console.error(e); } }
+async function saveGrowthRecords() { try { await window.storage.set(GROWTH_RECORDS_KEY, JSON.stringify(growthRecords)); } catch (e) { console.error(e); } }
 async function saveAdults() { try { await window.storage.set(ADULTS_KEY, JSON.stringify(adults)); } catch (e) { console.error(e); } }
 async function saveAdultVaccineCatalog() { try { await window.storage.set(ADULT_VACCINE_CATALOG_KEY, JSON.stringify(adultVaccineCatalog)); } catch (e) { console.error(e); } }
 
@@ -653,6 +713,7 @@ async function load() {
   try { const r = await window.storage.get(DENTIST_RECORDS_KEY); dentistRecords = r ? JSON.parse(r.value) : defaultDentistRecords(); } catch (e) { dentistRecords = defaultDentistRecords(); }
   try { const r = await window.storage.get(OTHER_EXPENSES_KEY); otherExpenses = r ? JSON.parse(r.value) : defaultOtherExpenses(); } catch (e) { otherExpenses = defaultOtherExpenses(); }
   try { const r = await window.storage.get(CHECKUP_RECORDS_KEY); checkupRecords = r ? JSON.parse(r.value) : defaultCheckupRecords(); } catch (e) { checkupRecords = defaultCheckupRecords(); }
+  try { const r = await window.storage.get(GROWTH_RECORDS_KEY); growthRecords = r ? JSON.parse(r.value) : defaultGrowthRecords(); } catch (e) { growthRecords = defaultGrowthRecords(); }
   try { const r = await window.storage.get(ADULTS_KEY); adults = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdults(); } catch (e) { adults = defaultAdults(); }
   try { const r = await window.storage.get(ADULT_VACCINE_CATALOG_KEY); adultVaccineCatalog = r && JSON.parse(r.value).length ? JSON.parse(r.value) : defaultAdultVaccineCatalog(); } catch (e) { adultVaccineCatalog = defaultAdultVaccineCatalog(); }
 
@@ -680,6 +741,8 @@ async function load() {
     if (!r7) await saveAdultVaccineCatalog();
     const r8 = await window.storage.get(CHECKUP_RECORDS_KEY);
     if (!r8) await saveCheckupRecords();
+    const r9 = await window.storage.get(GROWTH_RECORDS_KEY);
+    if (!r9) await saveGrowthRecords();
     if (dentistIdsFixed) await saveDentistRecords();
     if (checkupIdsFixed) await saveCheckupRecords();
   } catch (e) { console.error(e); }
@@ -688,6 +751,7 @@ async function load() {
 
   if (!selectedDentistChild && (children.length || adults.length)) selectedDentistChild = (children[0] || adults[0]).slug;
   if (!selectedCheckupChild && (children.length || adults.length)) selectedCheckupChild = (children[0] || adults[0]).slug;
+  if (!selectedGrowthChild && (children.length || adults.length)) selectedGrowthChild = (children[0] || adults[0]).slug;
   render();
 }
 
@@ -1151,6 +1215,81 @@ function cancelCheckupEdit() {
   document.getElementById('chk-cancel-edit').style.display = 'none';
 }
 
+function renderGrowthTab() {
+  const tabsWrap = document.getElementById('growth-child-tabs');
+  if (!tabsWrap) return;
+  tabsWrap.innerHTML = '';
+  const allMembers = [...children, ...adults];
+  if (!allMembers.length) { tabsWrap.innerHTML = '<p class="empty">ยังไม่มีข้อมูลสมาชิก ไปที่แท็บ "ตั้งค่า" ก่อน</p>'; document.getElementById('growth-list').innerHTML = ''; return; }
+  allMembers.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'child-tab' + (selectedGrowthChild === c.slug ? ' active' : '');
+    btn.textContent = childLabel(c) + currentAgeLabel(c);
+    btn.addEventListener('click', () => { selectedGrowthChild = c.slug; cancelGrowthEdit(); render(); });
+    tabsWrap.appendChild(btn);
+  });
+
+  const listWrap = document.getElementById('growth-list');
+  listWrap.innerHTML = '';
+  const child = findMember(selectedGrowthChild);
+  const list = growthRecords.filter(r => r.member === selectedGrowthChild).sort((a, b) => b.date.localeCompare(a.date));
+  if (!list.length) { listWrap.innerHTML = '<p class="empty">ยังไม่มีประวัติการเจริญเติบโต</p>'; return; }
+  list.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'visit-card';
+    const age = child ? calcAge(child.birthDate, r.date) : '';
+    const parts = [];
+    if (r.weight != null) parts.push('น้ำหนัก ' + r.weight + ' กก.');
+    if (r.height != null) parts.push('ส่วนสูง ' + r.height + ' ซม.');
+    if (r.head != null) parts.push('ขนาดศีรษะ ' + r.head + ' ซม.');
+    if (r.chest != null) parts.push('ขนาดหน้าอก ' + r.chest + ' ซม.');
+    if (r.note) parts.push(r.note);
+    div.innerHTML = `<div class="row-between">
+        <span>${fmtDateStr(r.date)}${age ? ' <span class="muted">(อายุ ' + age + ')</span>' : ''}</span>
+        <span>
+          <button class="del-btn" data-edit="${r.id}" aria-label="แก้ไข" style="margin-right:4px;">✏️</button>
+          <button class="del-btn" data-del="${r.id}" aria-label="ลบ">✕</button>
+        </span>
+      </div>
+      ${parts.length ? `<p class="muted" style="margin:6px 0 0;">${parts.join(' · ')}</p>` : ''}`;
+    listWrap.appendChild(div);
+  });
+  listWrap.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('ลบรายการนี้?')) return;
+    growthRecords = growthRecords.filter(r => r.id !== btn.dataset.del);
+    if (editingGrowthId === btn.dataset.del) cancelGrowthEdit();
+    await saveGrowthRecords(); render();
+  }));
+  listWrap.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => startGrowthEdit(btn.dataset.edit)));
+}
+
+function startGrowthEdit(id) {
+  const r = growthRecords.find(x => x.id === id);
+  if (!r) return;
+  editingGrowthId = id;
+  document.getElementById('gr-date').value = r.date || '';
+  document.getElementById('gr-weight').value = r.weight != null ? r.weight : '';
+  document.getElementById('gr-height').value = r.height != null ? r.height : '';
+  document.getElementById('gr-head').value = r.head != null ? r.head : '';
+  document.getElementById('gr-chest').value = r.chest != null ? r.chest : '';
+  document.getElementById('gr-note').value = r.note || '';
+  document.getElementById('gr-add').textContent = '💾 บันทึกการแก้ไข';
+  document.getElementById('gr-cancel-edit').style.display = 'inline-block';
+  document.getElementById('gr-date').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelGrowthEdit() {
+  editingGrowthId = null;
+  document.getElementById('gr-date').value = '';
+  document.getElementById('gr-weight').value = '';
+  document.getElementById('gr-height').value = '';
+  document.getElementById('gr-head').value = '';
+  document.getElementById('gr-chest').value = '';
+  document.getElementById('gr-note').value = '';
+  document.getElementById('gr-add').textContent = '+ บันทึกการเจริญเติบโต';
+  document.getElementById('gr-cancel-edit').style.display = 'none';
+}
+
 function refreshChildMemberSelect(sel) {
   sel.innerHTML = '';
   members.forEach(m => sel.appendChild(new Option(m.label, m.key)));
@@ -1171,6 +1310,11 @@ function renderChildrenSetup() {
       <span>${c.slug}${currentAgeLabel(c)}</span>
       <select class="cs-member">${memberOptions}</select>
       <input type="date" class="cs-birth" value="${c.birthDate || ''}">
+      <select class="cs-gender">
+        <option value="" ${!c.gender ? 'selected' : ''}>เพศ (ไม่ระบุ)</option>
+        <option value="male" ${c.gender === 'male' ? 'selected' : ''}>ชาย</option>
+        <option value="female" ${c.gender === 'female' ? 'selected' : ''}>หญิง</option>
+      </select>
     `;
     wrap.appendChild(row);
     row.querySelector('.cs-member').addEventListener('change', async (e) => {
@@ -1179,6 +1323,10 @@ function renderChildrenSetup() {
     });
     row.querySelector('.cs-birth').addEventListener('change', async (e) => {
       children[idx].birthDate = e.target.value;
+      await saveChildren(); render();
+    });
+    row.querySelector('.cs-gender').addEventListener('change', async (e) => {
+      children[idx].gender = e.target.value || null;
       await saveChildren(); render();
     });
   });
@@ -1426,6 +1574,7 @@ function render() {
   renderAdultVaccineTable();
   renderDentistTab();
   renderCheckupTab();
+  renderGrowthTab();
   renderExpenses();
   renderChildrenSetup();
   renderAdultsSetup();
@@ -1651,15 +1800,46 @@ document.getElementById('chk-add').addEventListener('click', async () => {
 });
 document.getElementById('chk-cancel-edit').addEventListener('click', () => { cancelCheckupEdit(); render(); });
 
+document.getElementById('gr-add').addEventListener('click', async () => {
+  if (!selectedGrowthChild) return;
+  const dateInput = document.getElementById('gr-date');
+  const weightInput = document.getElementById('gr-weight');
+  const heightInput = document.getElementById('gr-height');
+  const headInput = document.getElementById('gr-head');
+  const chestInput = document.getElementById('gr-chest');
+  const noteInput = document.getElementById('gr-note');
+  if (!dateInput.value) return;
+  const num = (input) => input.value !== '' && !isNaN(parseFloat(input.value)) ? parseFloat(input.value) : null;
+  const values = {
+    date: dateInput.value,
+    weight: num(weightInput),
+    height: num(heightInput),
+    head: num(headInput),
+    chest: num(chestInput),
+    note: noteInput.value.trim()
+  };
+  if (editingGrowthId) {
+    const rec = growthRecords.find(r => r.id === editingGrowthId);
+    if (rec) Object.assign(rec, values);
+    cancelGrowthEdit();
+  } else {
+    growthRecords.push(Object.assign({ id: genId(), member: selectedGrowthChild }, values));
+    dateInput.value = ''; weightInput.value = ''; heightInput.value = ''; headInput.value = ''; chestInput.value = ''; noteInput.value = '';
+  }
+  await saveGrowthRecords(); render();
+});
+document.getElementById('gr-cancel-edit').addEventListener('click', () => { cancelGrowthEdit(); render(); });
+
 const chMemberSelect = document.getElementById('ch-member');
 document.getElementById('ch-add').addEventListener('click', async () => {
   const slugInput = document.getElementById('ch-slug');
   const birthInput = document.getElementById('ch-birth');
+  const genderInput = document.getElementById('ch-gender');
   const slug = slugInput.value.trim().toLowerCase().replace(/\s+/g, '-');
   if (!slug) return;
   if (children.some(c => c.slug === slug)) { alert('มีชื่อนี้อยู่แล้ว'); return; }
-  children.push({ slug, memberKey: chMemberSelect.value || '', birthDate: birthInput.value || '' });
-  slugInput.value = ''; birthInput.value = '';
+  children.push({ slug, memberKey: chMemberSelect.value || '', birthDate: birthInput.value || '', gender: genderInput.value || null });
+  slugInput.value = ''; birthInput.value = ''; genderInput.value = '';
   await saveChildren(); render();
 });
 
@@ -1673,7 +1853,7 @@ function renderAdultsSetup() {
   }
   adults.forEach((a, idx) => {
     const row = document.createElement('div');
-    row.className = 'setup-row';
+    row.className = 'setup-row setup-row-3';
     const memberOptions = members.map(m => `<option value="${m.key}" ${m.key === a.memberKey ? 'selected' : ''}>${m.label}</option>`).join('');
     row.innerHTML = `
       <span>${a.slug}${currentAgeLabel(a)}</span>
