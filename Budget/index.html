@@ -226,6 +226,10 @@
       <div class="metric expense"><p class="label">ใช้จ่ายล็อก</p><p class="value" id="m-spending-locked">฿0</p></div>
       <div class="metric"><p class="label">ใช้จ่ายที่ไม่ระบุ</p><p class="value" id="m-spending-unspecified">฿0</p></div>
     </div>
+    <div class="card" id="month-estimate-card">
+      <h2>ประมาณการรายจ่ายเดือนนี้ (ณ วันนี้)</h2>
+      <div id="month-estimate"></div>
+    </div>
     <div class="card">
       <h2>ภาพรวมรายจ่าย</h2>
       <div class="tabs">
@@ -1823,6 +1827,71 @@ function renderBudgetManager() {
   }
 }
 
+function renderMonthEstimate() {
+  const wrap = document.getElementById('month-estimate');
+  if (!wrap) return;
+  const todayYm = toISO(new Date()).slice(0, 7);
+  if (currentViewMonth !== todayYm) {
+    wrap.innerHTML = '<p class="empty">ประมาณการนี้ดูได้เฉพาะเดือนปัจจุบัน (' + monthLabel(todayYm) + ') เท่านั้น</p>';
+    return;
+  }
+  const ym = todayYm;
+  const todayISO = toISO(new Date());
+  const flow = cashFlowForMonth(ym);
+
+  // 1) เงินสด/โอน (ไม่ใช่บัตร) ที่บันทึกแล้วเดือนนี้
+  const cashEntries = entries.filter(e => {
+    if (e.date.slice(0, 7) !== ym) return false;
+    if (getCat(e.category).kind !== 'expense') return false;
+    const isCardPayment = e.payment && e.payment !== 'cash' && cards.some(c => c.id === e.payment);
+    return !isCardPayment;
+  });
+  const cashSum = cashEntries.reduce((s, e) => s + e.amount, 0);
+
+  // 2) รายจ่ายผ่านบัตรเครดิตที่เกิดขึ้นแล้วเดือนนี้ (ตามวันที่ซื้อจริง ไม่ใช่วันที่กดจ่ายบิล)
+  const cardEntries = entries.filter(e => e.date.slice(0, 7) === ym && getCat(e.category).kind === 'expense' && e.payment && cards.some(c => c.id === e.payment));
+  const cardByCard = {};
+  cardEntries.forEach(e => { cardByCard[e.payment] = (cardByCard[e.payment] || 0) + e.amount; });
+  const cardSum = cardEntries.reduce((s, e) => s + e.amount, 0);
+
+  // 3) รายจ่ายประจำที่ยังไม่จ่าย (ครบกำหนดในเดือนนี้ หรือเลยกำหนดมาแล้ว)
+  const nextMonthFirstDay = shiftMonth(ym, 1) + '-01';
+  const pendingFixed = fixedExpenses.filter(x => x.dueDate && x.dueDate < nextMonthFirstDay);
+  const pendingFixedSum = pendingFixed.reduce((s, x) => s + x.amount, 0);
+
+  const estimateTotal = cashSum + cardSum + pendingFixedSum;
+  const estimatedBalance = flow.income - estimateTotal;
+
+  let html = '';
+  html += `<p class="muted" style="margin:0 0 10px;">รวมรายจ่ายที่เกิดขึ้นแล้ว (เงินสด/โอน + บัตรเครดิตตามวันที่ซื้อจริง — จึงอาจไม่เท่ากับการ์ด "รายจ่ายเดือนนี้" ด้านบนที่นับตามวันที่กดจ่ายบิล) บวกรายจ่ายประจำที่ยังไม่จ่าย เป็นประมาณการรายจ่ายทั้งเดือน</p>`;
+
+  html += `<div class="row-between" style="margin-bottom:6px;"><span>1) เงินสด/โอน (บันทึกแล้ว)</span><span style="font-weight:600;">${fmt(cashSum)}</span></div>`;
+
+  html += `<div class="row-between" style="margin-bottom:2px;"><span>2) บัตรเครดิต (ใช้ไปแล้ว ตามวันที่ซื้อ)</span><span style="font-weight:600;">${fmt(cardSum)}</span></div>`;
+  if (cardEntries.length) {
+    html += Object.keys(cardByCard).map(cid => {
+      const c = cards.find(cc => cc.id === cid);
+      return `<div class="row-between" style="padding-left:14px;font-size:13px;color:var(--text-secondary);"><span>${c ? c.name : cid}</span><span>${fmt(cardByCard[cid])}</span></div>`;
+    }).join('');
+  }
+
+  html += `<div class="row-between" style="margin:6px 0 2px;"><span>3) รายจ่ายประจำที่ยังไม่จ่าย</span><span style="font-weight:600;">${fmt(pendingFixedSum)}</span></div>`;
+  if (pendingFixed.length) {
+    html += pendingFixed.map(x => {
+      const overdue = x.dueDate < todayISO;
+      return `<div class="row-between" style="padding-left:14px;font-size:13px;color:${overdue ? 'var(--rust)' : 'var(--text-secondary)'};"><span>${x.name}${overdue ? ' (เลยกำหนด)' : ' · ครบกำหนด ' + fmtDateStr(x.dueDate)}</span><span>${fmt(x.amount)}</span></div>`;
+    }).join('');
+  } else {
+    html += `<div class="row-between" style="padding-left:14px;font-size:13px;color:var(--text-secondary);"><span>ไม่มีรายการค้าง</span><span></span></div>`;
+  }
+
+  html += `<div style="border-top:1px solid var(--border);margin:12px 0;"></div>`;
+  html += `<div class="row-between" style="margin-bottom:6px;"><span style="font-weight:600;">รวมประมาณการรายจ่ายทั้งเดือน</span><span style="font-weight:600;">${fmt(estimateTotal)}</span></div>`;
+  html += `<div class="row-between" style="margin-bottom:6px;"><span>รายรับเดือนนี้ (ณ วันนี้)</span><span style="font-weight:600;color:var(--sage);">${fmt(flow.income)}</span></div>`;
+  html += `<div class="row-between"><span style="font-weight:600;">คาดว่าคงเหลือปลายเดือน</span><span style="font-weight:600;color:${estimatedBalance < 0 ? 'var(--rust)' : 'var(--text-primary)'};">${fmt(estimatedBalance)}</span></div>`;
+
+  wrap.innerHTML = html;
+}
 function renderBudgetProgress() {
   const wrap = document.getElementById('budget-progress');
   wrap.innerHTML = '';
@@ -3488,6 +3557,7 @@ function render() {
   renderCharts();
   renderCycleBreakdown();
   renderCategoryTrend();
+  renderMonthEstimate();
   renderBudgetProgress();
   renderBudgetManager();
   renderYearlySummary();
