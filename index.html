@@ -1951,7 +1951,14 @@ function renderFixedExpenses() {
   if (fixedExpenses.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีรายจ่ายประจำ เพิ่มรายการแรกด้านล่าง</p>'; return; }
   const todayISO = toISO(new Date());
 
-  fixedExpenses.forEach(x => {
+  // เรียงตามวันที่จ่ายล่าสุด: ยังไม่เคยจ่าย/จ่ายมานานแล้ว อยู่บนสุด, เพิ่งจ่ายไปล่าสุด ไหลลงล่างสุด
+  const sortedFixedExpenses = fixedExpenses.slice().sort((a, b) => {
+    const la = (a.history && a.history.length) ? a.history[a.history.length - 1].date : '';
+    const lb = (b.history && b.history.length) ? b.history[b.history.length - 1].date : '';
+    return la.localeCompare(lb);
+  });
+
+  sortedFixedExpenses.forEach(x => {
     const div = document.createElement('div');
     div.className = 'goal-card';
 
