@@ -472,6 +472,13 @@
 
   <section>
     <div class="card">
+      <h2>สรุปยอดเก็บต่อเดือน แยกตามกระเป๋า</h2>
+      <div id="goal-wallet-monthly-summary"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
       <h2>สรุปยอดเงินออมตามสถานะการดึงมาใช้</h2>
       <div id="withdrawable-summary"></div>
     </div>
@@ -2625,6 +2632,35 @@ function renderGoalTypeSummary() {
   });
 }
 
+function renderGoalWalletMonthlySummary() {
+  const wrap = document.getElementById('goal-wallet-monthly-summary');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const withMonthly = goals.filter(g => g.monthly && g.monthly > 0);
+  if (withMonthly.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมายที่ตั้งยอดต่องวด/เดือนไว้</p>'; return; }
+  const groups = {};
+  withMonthly.forEach(g => {
+    const key = g.account || '__none__';
+    if (!groups[key]) groups[key] = { label: g.account ? walletLabel(g.account) : 'ไม่ระบุกระเป๋า', total: 0, items: [] };
+    groups[key].total += g.monthly;
+    groups[key].items.push(g);
+  });
+  const grandTotal = withMonthly.reduce((s, g) => s + g.monthly, 0);
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทุกกระเป๋า</span><span style="font-weight:600;">${fmt(grandTotal)} / เดือน</span></div>`;
+  wrap.appendChild(totalDiv);
+  Object.keys(groups).sort((a, b) => groups[a].label.localeCompare(groups[b].label, 'th')).forEach(key => {
+    const grp = groups[key];
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="font-weight:600;">${grp.label}</span><span style="font-weight:600;">${fmt(grp.total)} / เดือน</span></div>
+      ${grp.items.map(g => `<div class="row-between" style="padding-left:14px;font-size:13px;color:var(--text-secondary);"><span>${g.name}</span><span>${fmt(g.monthly)}</span></div>`).join('')}`;
+    wrap.appendChild(div);
+  });
+}
+
 function renderWithdrawableSummary() {
   const wrap = document.getElementById('withdrawable-summary');
   wrap.innerHTML = '';
@@ -3576,6 +3612,7 @@ function render() {
   renderBulkLogForm();
   renderGoals();
   renderGoalTypeSummary();
+  renderGoalWalletMonthlySummary();
   renderWithdrawableSummary();
   renderCharts();
   renderCycleBreakdown();
