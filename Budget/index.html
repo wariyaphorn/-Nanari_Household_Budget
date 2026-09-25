@@ -1859,11 +1859,23 @@ function renderMonthEstimate() {
   const pendingFixed = fixedExpenses.filter(x => x.dueDate && x.dueDate < nextMonthFirstDay);
   const pendingFixedSum = pendingFixed.reduce((s, x) => s + x.amount, 0);
 
-  const estimateTotal = cashSum + cardSum + pendingFixedSum;
+  // 4) เป้าหมายที่มียอดต่องวด/เดือนตั้งไว้ — หักไปแล้วเท่าไหร่ ยังขาดเท่าไหร่
+  const monthlyGoals = goals.filter(g => g.monthly && g.monthly > 0);
+  let goalContributedSum = 0, goalShortfallSum = 0;
+  const goalRows = monthlyGoals.map(g => {
+    const gKind = g.kind === 'debt' ? 'debt' : 'saving';
+    const contributed = entries.filter(e => e.category === gKind && e.goal === g.id && e.date.slice(0, 7) === ym && (!g.lastResetDate || e.date > g.lastResetDate)).reduce((s, e) => s + e.amount, 0);
+    const shortfall = Math.max(0, g.monthly - contributed);
+    goalContributedSum += contributed;
+    goalShortfallSum += shortfall;
+    return { name: g.name, monthly: g.monthly, contributed, shortfall };
+  });
+
+  const estimateTotal = cashSum + cardSum + pendingFixedSum + goalContributedSum + goalShortfallSum;
   const estimatedBalance = flow.income - estimateTotal;
 
   let html = '';
-  html += `<p class="muted" style="margin:0 0 10px;">รวมรายจ่ายที่เกิดขึ้นแล้ว (เงินสด/โอน + บัตรเครดิตตามวันที่ซื้อจริง — จึงอาจไม่เท่ากับการ์ด "รายจ่ายเดือนนี้" ด้านบนที่นับตามวันที่กดจ่ายบิล) บวกรายจ่ายประจำที่ยังไม่จ่าย เป็นประมาณการรายจ่ายทั้งเดือน</p>`;
+  html += `<p class="muted" style="margin:0 0 10px;">รวมรายจ่ายที่เกิดขึ้นแล้ว (เงินสด/โอน + บัตรเครดิตตามวันที่ซื้อจริง — จึงอาจไม่เท่ากับการ์ด "รายจ่ายเดือนนี้" ด้านบนที่นับตามวันที่กดจ่ายบิล) บวกรายจ่ายประจำที่ยังไม่จ่าย บวกเงินที่ต้องหักเข้าเป้าหมายเดือนนี้ เป็นประมาณการรายจ่ายทั้งเดือน</p>`;
 
   html += `<div class="row-between" style="margin-bottom:6px;"><span>1) เงินสด/โอน (บันทึกแล้ว)</span><span style="font-weight:600;">${fmt(cashSum)}</span></div>`;
 
@@ -1883,6 +1895,17 @@ function renderMonthEstimate() {
     }).join('');
   } else {
     html += `<div class="row-between" style="padding-left:14px;font-size:13px;color:var(--text-secondary);"><span>ไม่มีรายการค้าง</span><span></span></div>`;
+  }
+
+  html += `<div class="row-between" style="margin:6px 0 2px;"><span>4) เงินที่ต้องหักเข้าเป้าหมายเดือนนี้</span><span style="font-weight:600;">${fmt(goalContributedSum + goalShortfallSum)}</span></div>`;
+  if (goalRows.length) {
+    html += goalRows.map(g => {
+      const statusText = g.shortfall > 0 ? `หักแล้ว ${fmt(g.contributed)} / ${fmt(g.monthly)} · ยังขาด ${fmt(g.shortfall)}` : `หักครบแล้ว ${fmt(g.contributed)} / ${fmt(g.monthly)}`;
+      const color = g.shortfall > 0 ? 'var(--rust)' : 'var(--sage)';
+      return `<div class="row-between" style="padding-left:14px;font-size:13px;color:${color};"><span>${g.name}</span><span>${statusText}</span></div>`;
+    }).join('');
+  } else {
+    html += `<div class="row-between" style="padding-left:14px;font-size:13px;color:var(--text-secondary);"><span>ยังไม่มีเป้าหมายที่ตั้งยอดต่องวด/เดือนไว้</span><span></span></div>`;
   }
 
   html += `<div style="border-top:1px solid var(--border);margin:12px 0;"></div>`;
