@@ -221,10 +221,10 @@
       <div class="metric"><p class="label">เงินออมที่ไม่ระบุ</p><p class="value" id="m-savings-unspecified">฿0</p></div>
     </div>
     <div class="metrics">
-      <div class="metric"><p class="label">ใช้จ่ายทั้งหมด</p><p class="value" id="m-spending-total">฿0</p></div>
-      <div class="metric income"><p class="label">ใช้จ่ายไม่ล็อก</p><p class="value" id="m-spending-available">฿0</p></div>
-      <div class="metric expense"><p class="label">ใช้จ่ายล็อก</p><p class="value" id="m-spending-locked">฿0</p></div>
-      <div class="metric"><p class="label">ใช้จ่ายที่ไม่ระบุ</p><p class="value" id="m-spending-unspecified">฿0</p></div>
+      <div class="metric"><p class="label">คงเหลือกระเป๋าใช้จ่าย</p><p class="value" id="m-spending-total">฿0</p></div>
+      <div class="metric income"><p class="label">คงเหลือ (ไม่ล็อก)</p><p class="value" id="m-spending-available">฿0</p></div>
+      <div class="metric expense"><p class="label">คงเหลือ (ล็อกไว้)</p><p class="value" id="m-spending-locked">฿0</p></div>
+      <div class="metric"><p class="label">คงเหลือ (ไม่ระบุสถานะ)</p><p class="value" id="m-spending-unspecified">฿0</p></div>
     </div>
     <div class="card" id="month-estimate-card">
       <div class="row-between" style="align-items:center;">
@@ -625,6 +625,13 @@
     <div class="card">
       <h2>สรุปยอดกระเป๋าเงินตามสถานะการดึงมาใช้</h2>
       <div id="wallet-status-summary"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <h2>สรุปยอดกระเป๋าเงินตามประเภท</h2>
+      <div id="wallet-type-summary"></div>
     </div>
   </section>
 
@@ -1835,6 +1842,36 @@ function renderWalletStatusSummary() {
     const div = document.createElement('div');
     div.className = 'goal-card';
     div.innerHTML = `<div class="row-between"><span style="color:${statusColors[key]};">${statusLabels[key]}</span><span style="font-weight:600;">${fmt(grouped[key].total)}</span></div>
+      <p class="muted" style="margin:4px 0 0;">${grouped[key].items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>`;
+    wrap.appendChild(div);
+  });
+}
+
+function renderWalletTypeSummary() {
+  const wrap = document.getElementById('wallet-type-summary');
+  wrap.innerHTML = '';
+  if (wallets.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกระเป๋าเงิน เพิ่มกระเป๋าก่อนเพื่อดูสรุปที่นี่</p>'; return; }
+  const typeLabels = { spending: 'กระเป๋าใช้จ่าย', saving: 'กระเป๋าออม/สำรอง' };
+  const typeColors = { spending: 'var(--gold)', saving: 'var(--sage)' };
+  const grouped = { spending: { total: 0, items: [] }, saving: { total: 0, items: [] } };
+  let grandTotal = 0;
+  wallets.forEach(w => {
+    const bal = walletBalance(w);
+    const key = w.type === 'saving' ? 'saving' : 'spending';
+    grouped[key].total += bal;
+    grouped[key].items.push({ name: w.name, amount: bal });
+    grandTotal += bal;
+  });
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทั้งหมด</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>`;
+  wrap.appendChild(totalDiv);
+  ['spending', 'saving'].forEach(key => {
+    if (grouped[key].items.length === 0) return;
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="color:${typeColors[key]};">${typeLabels[key]} (${grouped[key].items.length})</span><span style="font-weight:600;">${fmt(grouped[key].total)}</span></div>
       <p class="muted" style="margin:4px 0 0;">${grouped[key].items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>`;
     wrap.appendChild(div);
   });
@@ -3757,6 +3794,7 @@ function render() {
   refreshBillImportSelects();
   renderWalletsManager();
   renderWalletStatusSummary();
+  renderWalletTypeSummary();
   renderMainAccountsManager();
 }
 
