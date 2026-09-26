@@ -227,7 +227,10 @@
       <div class="metric"><p class="label">ใช้จ่ายที่ไม่ระบุ</p><p class="value" id="m-spending-unspecified">฿0</p></div>
     </div>
     <div class="card" id="month-estimate-card">
-      <h2>ประมาณการรายจ่ายเดือนนี้ (ณ วันนี้)</h2>
+      <div class="row-between" style="align-items:center;">
+        <h2 style="margin:0;">ประมาณการรายจ่ายเดือนนี้ (ณ วันนี้)</h2>
+        <button class="btn" id="month-estimate-toggle" type="button" style="font-size:12px;padding:4px 10px;">ซ่อน ▲</button>
+      </div>
       <div id="month-estimate"></div>
     </div>
     <div class="card">
@@ -1895,17 +1898,29 @@ function renderMonthEstimate() {
   const todayISO = toISO(new Date());
   const flow = cashFlowForMonth(ym);
 
-  // 1) เงินสด/โอน (ไม่ใช่บัตร) ที่บันทึกแล้วเดือนนี้
+  // เตรียมเป้าหมายที่มียอดต่องวด/เดือนไว้ก่อน เพื่อกันรายการที่นับในข้อ 4 ไม่ให้ถูกนับซ้ำในข้อ 1
+  const monthlyGoals = goals.filter(g => g.monthly && g.monthly > 0);
+  const goalContributionEntryIds = new Set();
+  entries.forEach(e => {
+    if (e.date.slice(0, 7) !== ym || !e.goal) return;
+    const g = monthlyGoals.find(mg => mg.id === e.goal);
+    if (!g) return;
+    const gKind = g.kind === 'debt' ? 'debt' : 'saving';
+    if (e.category === gKind) goalContributionEntryIds.add(e.id);
+  });
+
+  // 1) เงินสด/โอน (ไม่ใช่บัตร) ที่บันทึกแล้วเดือนนี้ (ไม่รวมรายการที่ผูกเป้าหมายซึ่งนับไว้ในข้อ 4 แล้ว กันนับซ้ำ)
   const cashEntries = entries.filter(e => {
     if (e.date.slice(0, 7) !== ym) return false;
     if (getCat(e.category).kind !== 'expense') return false;
+    if (goalContributionEntryIds.has(e.id)) return false;
     const isCardPayment = e.payment && e.payment !== 'cash' && cards.some(c => c.id === e.payment);
     return !isCardPayment;
   });
   const cashSum = cashEntries.reduce((s, e) => s + e.amount, 0);
 
-  // 2) รายจ่ายผ่านบัตรเครดิตที่เกิดขึ้นแล้วเดือนนี้ (ตามวันที่ซื้อจริง ไม่ใช่วันที่กดจ่ายบิล)
-  const cardEntries = entries.filter(e => e.date.slice(0, 7) === ym && getCat(e.category).kind === 'expense' && e.payment && cards.some(c => c.id === e.payment));
+  // 2) รายจ่ายผ่านบัตรเครดิตที่เกิดขึ้นแล้วเดือนนี้ (ตามวันที่ซื้อจริง ไม่ใช่วันที่กดจ่ายบิล) — กันนับซ้ำกับข้อ 4 เช่นเดียวกับข้อ 1
+  const cardEntries = entries.filter(e => e.date.slice(0, 7) === ym && getCat(e.category).kind === 'expense' && !goalContributionEntryIds.has(e.id) && e.payment && cards.some(c => c.id === e.payment));
   const cardByCard = {};
   cardEntries.forEach(e => { cardByCard[e.payment] = (cardByCard[e.payment] || 0) + e.amount; });
   const cardSum = cardEntries.reduce((s, e) => s + e.amount, 0);
@@ -1916,7 +1931,6 @@ function renderMonthEstimate() {
   const pendingFixedSum = pendingFixed.reduce((s, x) => s + x.amount, 0);
 
   // 4) เป้าหมายที่มียอดต่องวด/เดือนตั้งไว้ — หักไปแล้วเท่าไหร่ ยังขาดเท่าไหร่
-  const monthlyGoals = goals.filter(g => g.monthly && g.monthly > 0);
   let goalContributedSum = 0, goalShortfallSum = 0;
   const goalRows = monthlyGoals.map(g => {
     const gKind = g.kind === 'debt' ? 'debt' : 'saving';
@@ -4400,6 +4414,24 @@ document.getElementById('cycle-diag-toggle').addEventListener('click', () => {
     panel.style.display = '';
   }
 });
+
+function applyMonthEstimateVisibility() {
+  let hidden = false;
+  try { hidden = localStorage.getItem('month-estimate-hidden') === '1'; } catch (e) {}
+  const body = document.getElementById('month-estimate');
+  const btn = document.getElementById('month-estimate-toggle');
+  if (!body || !btn) return;
+  body.style.display = hidden ? 'none' : '';
+  btn.textContent = hidden ? 'แสดง ▼' : 'ซ่อน ▲';
+}
+document.getElementById('month-estimate-toggle').addEventListener('click', () => {
+  let hidden = false;
+  try { hidden = localStorage.getItem('month-estimate-hidden') === '1'; } catch (e) {}
+  const next = !hidden;
+  try { localStorage.setItem('month-estimate-hidden', next ? '1' : '0'); } catch (e) {}
+  applyMonthEstimateVisibility();
+});
+applyMonthEstimateVisibility();
 
 document.getElementById('month-prev').addEventListener('click', () => {
   currentViewMonth = shiftMonth(currentViewMonth, -1);
