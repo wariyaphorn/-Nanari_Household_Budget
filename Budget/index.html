@@ -3485,7 +3485,8 @@ function renderLedger() {
   if (ledgerSearch.trim()) {
     const words = ledgerSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
     list = list.filter(e => {
-      const haystack = [e.note, getCat(e.category).label, memberLabel(e.member), paymentLabel(e.payment), walletLabel(e.account), e.date].join(' ').toLowerCase();
+      const goalName = e.goal ? (goals.find(g => g.id === e.goal)?.name || '') : '';
+      const haystack = [e.note, getCat(e.category).label, memberLabel(e.member), paymentLabel(e.payment), walletLabel(e.account), goalName, e.date].join(' ').toLowerCase();
       return words.every(w => haystack.includes(w));
     });
   }
