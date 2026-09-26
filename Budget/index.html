@@ -1582,6 +1582,7 @@ function walletBalance(w) { return walletBalanceDetail(w).total; }
 let editingWalletId = null;
 let expandedWalletDetails = new Set();
 let walletDetailMonth = {};
+let addingTxWalletId = null;
 
 function renderWalletsManager() {
   const wrap = document.getElementById('wallets-manager');
@@ -1657,9 +1658,32 @@ function renderWalletsManager() {
           <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดคงเหลือสิ้นเดือน</span><span>${fmt(closingBalance)}</span></div>`;
       }
     }
+    const addingTx = addingTxWalletId === w.id;
+    const addTxFormHtml = addingTx ? `
+      <div style="margin-top:8px;padding:10px;background:var(--paper);border-radius:8px;">
+        <div class="form-grid g2" style="margin-bottom:8px;">
+          <select class="wtx-type">
+            <option value="in">ฝากเข้า (+)</option>
+            <option value="out">ถอนออก (-)</option>
+          </select>
+          <input type="number" class="wtx-amount" min="0" step="0.01" placeholder="จำนวนเงิน">
+        </div>
+        <div class="form-grid g2" style="margin-bottom:8px;">
+          <input type="date" class="wtx-date" value="${toISO(new Date())}">
+          <input type="text" class="wtx-note" placeholder="โน้ต (ไม่บังคับ)">
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn" data-wtx-cancel="${w.id}">ยกเลิก</button>
+          <button class="btn btn-primary" data-wtx-confirm="${w.id}">บันทึก</button>
+        </div>
+      </div>` : '';
     div.innerHTML = `<div class="row-between"><span>${w.name} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
       ${lockTag}
-      ${balanceItems.length ? `<button class="btn" data-w-toggle-detail="${w.id}" style="margin-top:6px;font-size:12px;padding:4px 10px;">${isExpanded ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + balanceItems.length + ' รายการ) ▼'}</button>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        ${balanceItems.length ? `<button class="btn" data-w-toggle-detail="${w.id}" style="font-size:12px;padding:4px 10px;">${isExpanded ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + balanceItems.length + ' รายการ) ▼'}</button>` : ''}
+        <button class="btn" data-w-add-tx="${w.id}" style="font-size:12px;padding:4px 10px;">+ เพิ่มรายการ</button>
+      </div>
+      ${addTxFormHtml}
       ${isExpanded ? `<div style="margin:6px 0 0;">${detailHtml}</div>` : ''}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
         <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
@@ -1699,6 +1723,32 @@ function renderWalletsManager() {
     if (!confirm('ลบรายการนี้ในกระเป๋าเงินใช่ไหม?')) return;
     walletTransactions = walletTransactions.filter(t => t.id !== btn.dataset.delWalletTx);
     await saveWalletTransactions();
+    render();
+  }));
+  wrap.querySelectorAll('[data-w-add-tx]').forEach(btn => btn.addEventListener('click', () => {
+    addingTxWalletId = addingTxWalletId === btn.dataset.wAddTx ? null : btn.dataset.wAddTx;
+    renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-wtx-cancel]').forEach(btn => btn.addEventListener('click', () => {
+    addingTxWalletId = null;
+    renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-wtx-confirm]').forEach(btn => btn.addEventListener('click', async () => {
+    const walletId = btn.dataset.wtxConfirm;
+    const card = btn.closest('.goal-card');
+    const type = card.querySelector('.wtx-type').value;
+    const amountRaw = parseFloat(card.querySelector('.wtx-amount').value);
+    const date = card.querySelector('.wtx-date').value || toISO(new Date());
+    const note = card.querySelector('.wtx-note').value.trim();
+    if (!amountRaw || amountRaw <= 0) return;
+    const signedAmount = type === 'out' ? -amountRaw : amountRaw;
+    walletTransactions.push({
+      id: genId(), date,
+      account: walletId, amount: signedAmount,
+      note: note || (type === 'out' ? 'ถอนออก' : 'ฝากเข้า')
+    });
+    await saveWalletTransactions();
+    addingTxWalletId = null;
     render();
   }));
   wrap.querySelectorAll('[data-w-edit]').forEach(btn => btn.addEventListener('click', () => {
