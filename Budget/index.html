@@ -1550,31 +1550,35 @@ function renderCards() {
 function walletBalanceDetail(w) {
   let total = w.initial || 0;
   const items = [];
-  if (w.initial) items.push({ name: 'ยอดเริ่มต้น', amount: w.initial });
+  if (w.initial) items.push({ name: 'ยอดเริ่มต้น', amount: w.initial, date: null, txId: null });
   entries.forEach(e => {
     if (e.account !== w.id) return;
     if (e.goal && (e.category === 'saving' || e.category === 'debt')) return;
     const amt = getCat(e.category).kind === 'income' ? e.amount : -e.amount;
     total += amt;
-    items.push({ name: (e.note || getCat(e.category).label) + ' (' + e.date + ')', amount: amt, txId: null });
+    items.push({ name: (e.note || getCat(e.category).label) + ' (' + e.date + ')', amount: amt, date: e.date, txId: null });
   });
   goals.forEach(g => {
     if (g.account !== w.id) return;
     const saved = goalSaved(g);
     total += saved;
-    items.push({ name: g.name + ' (เป้าหมาย)', amount: saved, txId: null });
+    items.push({ name: g.name + ' (เป้าหมาย)', amount: saved, date: null, txId: null });
   });
   walletTransactions.forEach(t => {
     if (t.account !== w.id) return;
     total += t.amount;
-    items.push({ name: (t.note || 'รายการกระเป๋า') + ' (' + t.date + ')', amount: t.amount, txId: t.id });
+    items.push({ name: (t.note || 'รายการกระเป๋า') + ' (' + t.date + ')', amount: t.amount, date: t.date, txId: t.id });
   });
-  return { total, items };
+  // เรียง: รายการที่ไม่มีวันที่ (ยอดเริ่มต้น/เป้าหมาย) ไว้บนสุดตามเดิม แล้วตามด้วยรายการที่มีวันที่ เรียงเก่า→ใหม่
+  const undated = items.filter(it => !it.date);
+  const dated = items.filter(it => it.date).sort((a, b) => a.date.localeCompare(b.date));
+  return { total, items: [...undated, ...dated] };
 }
 function walletBalance(w) { return walletBalanceDetail(w).total; }
 
 let editingWalletId = null;
 let expandedWalletDetails = new Set();
+let walletDetailMonth = {};
 
 function renderWalletsManager() {
   const wrap = document.getElementById('wallets-manager');
@@ -1622,10 +1626,38 @@ function renderWalletsManager() {
       ? '<p style="margin:6px 0 0;"><span class="muted" style="color:var(--sage);">ดึงมาใช้ได้ในกรณีจำเป็น</span></p>'
       : '';
     const isExpanded = expandedWalletDetails.has(w.id);
+    const datedItems = balanceItems.filter(it => it.date);
+    const undatedItems = balanceItems.filter(it => !it.date);
+    const monthsAvail = [...new Set(datedItems.map(it => it.date.slice(0, 7)))].sort().reverse();
+    const selMonth = walletDetailMonth[w.id] || '';
+    let detailHtml = '';
+    if (isExpanded) {
+      const monthSelectHtml = monthsAvail.length
+        ? `<select class="w-detail-month" data-w-detail-month="${w.id}" style="font-size:12px;padding:3px 6px;margin-bottom:6px;">
+            <option value="" ${selMonth === '' ? 'selected' : ''}>ทั้งหมด</option>
+            ${monthsAvail.map(ym => `<option value="${ym}" ${selMonth === ym ? 'selected' : ''}>${monthLabel(ym)}</option>`).join('')}
+          </select>` : '';
+      if (selMonth === '' || !monthsAvail.length) {
+        detailHtml = `${monthSelectHtml}<div>${balanceItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('')}</div>`;
+      } else {
+        const monthStart = selMonth + '-01';
+        const before = datedItems.filter(it => it.date < monthStart).reduce((s, it) => s + it.amount, 0);
+        const undatedSum = undatedItems.reduce((s, it) => s + it.amount, 0);
+        const openingBalance = undatedSum + before;
+        const monthItems = datedItems.filter(it => it.date.slice(0, 7) === selMonth);
+        const monthSum = monthItems.reduce((s, it) => s + it.amount, 0);
+        const closingBalance = openingBalance + monthSum;
+        detailHtml = `${monthSelectHtml}
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดยกมาต้นเดือน</span><span>${fmt(openingBalance)}</span></div>
+          <div>${monthItems.length ? monthItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('') : '<div class="muted" style="font-size:12px;padding:2px 0;">ไม่มีรายการเดือนนี้</div>'}</div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid var(--border);margin-top:4px;"><span>รวมรายการเดือนนี้</span><span>${monthSum >= 0 ? '+' : ''}${fmt(monthSum)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดคงเหลือสิ้นเดือน</span><span>${fmt(closingBalance)}</span></div>`;
+      }
+    }
     div.innerHTML = `<div class="row-between"><span>${w.name} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
       ${lockTag}
       ${balanceItems.length ? `<button class="btn" data-w-toggle-detail="${w.id}" style="margin-top:6px;font-size:12px;padding:4px 10px;">${isExpanded ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + balanceItems.length + ' รายการ) ▼'}</button>` : ''}
-      ${isExpanded ? `<div style="margin:6px 0 0;">${balanceItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('')}</div>` : ''}
+      ${isExpanded ? `<div style="margin:6px 0 0;">${detailHtml}</div>` : ''}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
         <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
         <button class="btn" data-w-move-up="${w.id}" ${wIdx === 0 ? 'disabled style="opacity:0.4;"' : ''}>▲</button>
@@ -1654,6 +1686,10 @@ function renderWalletsManager() {
   wrap.querySelectorAll('[data-w-toggle-detail]').forEach(btn => btn.addEventListener('click', () => {
     const id = btn.dataset.wToggleDetail;
     if (expandedWalletDetails.has(id)) expandedWalletDetails.delete(id); else expandedWalletDetails.add(id);
+    renderWalletsManager();
+  }));
+  wrap.querySelectorAll('[data-w-detail-month]').forEach(sel => sel.addEventListener('change', () => {
+    walletDetailMonth[sel.dataset.wDetailMonth] = sel.value;
     renderWalletsManager();
   }));
   wrap.querySelectorAll('[data-del-wallet-tx]').forEach(btn => btn.addEventListener('click', async () => {
