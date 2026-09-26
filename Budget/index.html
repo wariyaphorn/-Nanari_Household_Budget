@@ -1949,7 +1949,7 @@ function renderMonthEstimate() {
   const flow = cashFlowForMonth(ym);
 
   // เตรียมเป้าหมายที่มียอดต่องวด/เดือนไว้ก่อน เพื่อกันรายการที่นับในข้อ 4 ไม่ให้ถูกนับซ้ำในข้อ 1
-  const monthlyGoals = goals.filter(g => g.monthly && g.monthly > 0);
+  const monthlyGoals = goals.filter(g => g.monthly && g.monthly > 0 && !g.inactive);
   const goalContributionEntryIds = new Set();
   entries.forEach(e => {
     if (e.date.slice(0, 7) !== ym || !e.goal) return;
@@ -2311,13 +2311,13 @@ function renderBulkLogForm() {
   const wrap = document.getElementById('bulk-log-form');
   wrap.innerHTML = '';
   if (!bulkLogOpen) return;
-  const bulkGoals = goals.filter(g => g.monthly);
+  const bulkGoals = goals.filter(g => g.monthly && !g.inactive);
   if (bulkGoals.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมายที่ตั้ง "ยอดต่องวด/เดือน" ไว้</p>'; return; }
   const defaultPayment = defaultBulkWallet && wallets.some(w => w.id === defaultBulkWallet) ? 'wallet:' + defaultBulkWallet : 'cash';
   const div = document.createElement('div');
   div.className = 'card';
   const paymentOptionsFor = (g) => {
-    const others = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt');
+    const others = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt' && !og.inactive);
     return '<option value="cash">เงินสด/โอน</option>'
       + cards.map(c => `<option value="${c.id}">บัตร ${c.name}</option>`).join('')
       + wallets.map(w => `<option value="wallet:${w.id}">กระเป๋า: ${w.name}</option>`).join('')
@@ -2473,6 +2473,10 @@ function renderGoals() {
             <p class="muted e-withdrawable-note" style="margin:4px 0 0;${g.account ? '' : 'display:none;'}">มีกระเป๋าเงินแล้ว สถานะจะตามกระเป๋าอัตโนมัติ</p>
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:6px;margin:4px 0 0;font-size:13px;">
+          <input type="checkbox" class="e-inactive" ${g.inactive ? 'checked' : ''}>
+          ปิดใช้งาน (ยังเก็บข้อมูลไว้ แต่ไม่ให้บันทึกยอด/รีเซ็ต และไม่รวมในแผนเดือนนี้)
+        </label>
         <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
           <button class="btn" data-cancel="${g.id}">ยกเลิก</button>
           <button class="btn btn-primary" data-save="${g.id}">บันทึก</button>
@@ -2498,7 +2502,7 @@ function renderGoals() {
     const lastLoggedEntry = goalLogEntries.length ? goalLogEntries.reduce((a, b) => a.date >= b.date ? a : b) : null;
 
     if (payingGoalId === g.id) {
-      const otherSavingGoals = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt');
+      const otherSavingGoals = goals.filter(og => og.id !== g.id && (og.kind || 'saving') !== 'debt' && !og.inactive);
       const paymentOptions = '<option value="cash">เงินสด/โอน</option>'
         + cards.map(c => `<option value="${c.id}">บัตร ${c.name}</option>`).join('')
         + wallets.map(w => `<option value="wallet:${w.id}">กระเป๋า: ${w.name}</option>`).join('')
@@ -2556,6 +2560,7 @@ function renderGoals() {
       ? '<span class="muted" style="color:var(--rust);">ห้ามดึงมาใช้ (ล็อกไว้)' + (g.account ? ' (ตามกระเป๋า)' : '') + '</span>'
       : '';
     div.innerHTML = `<div class="row-between"><span>${g.name}${g.account ? ` <span class="muted">· ${walletLabel(g.account)}</span>` : ''}${g.mainAccount ? ` <span class="muted">· บัญชี: ${mainAccountLabel(g.mainAccount)}</span>` : ''}${g.member ? ` <span class="muted">· ${memberLabel(g.member)}</span>` : ''}${kindBadge}</span><span class="secondary-text">${amountLine}</span></div>
+      ${g.inactive ? '<p style="margin:0 0 4px;"><span class="muted" style="color:var(--text-muted);">⏸ ปิดใช้งานแล้ว</span></p>' : ''}
       ${hasTarget ? `<div class="bar-bg"><div class="bar-fill" style="width:${pct.toFixed(0)}%;${kind === 'debt' ? 'background:var(--rust);' : ''}"></div></div>` : ''}
       ${withdrawTag ? `<p style="margin:0 0 4px;">${withdrawTag}</p>` : ''}
       ${g.monthly ? `<p class="muted" style="margin:0 0 4px;">${monthlyVerb} ${fmt(g.monthly)}${monthsLeft !== null ? (monthsLeft > 0 ? ' · ' + completionVerb + ' ' + completionLabel + ' (อีก ' + monthsLeft + ' เดือน)' : ' · ' + doneVerb) : ''}</p>` : ''}
@@ -2572,8 +2577,8 @@ function renderGoals() {
         <button class="btn" data-move-down="${g.id}" ${gIdx === goals.length - 1 ? 'disabled style="opacity:0.4;"' : ''}>▼</button>
         <button class="btn" data-edit="${g.id}">แก้ไข</button>
         <button class="btn" data-del-goal="${g.id}" style="color:var(--rust);border-color:var(--rust);">ลบ</button>
-        ${g.monthly ? `<button class="btn" data-log-open="${g.id}">+ บันทึกยอด${loggedThisMonthAmount > 0 ? 'เพิ่ม' : 'เดือนนี้'} (${fmt(g.monthly)})</button>` : ''}
-        <button class="btn" data-reset-open="${g.id}">✓ ${kind === 'debt' ? 'คืนครบแล้ว รีเซ็ต' : 'จ่ายแล้ว รีเซ็ต'}</button>
+        ${!g.inactive && g.monthly ? `<button class="btn" data-log-open="${g.id}">+ บันทึกยอด${loggedThisMonthAmount > 0 ? 'เพิ่ม' : 'เดือนนี้'} (${fmt(g.monthly)})</button>` : ''}
+        ${!g.inactive ? `<button class="btn" data-reset-open="${g.id}">✓ ${kind === 'debt' ? 'คืนครบแล้ว รีเซ็ต' : 'จ่ายแล้ว รีเซ็ต'}</button>` : ''}
       </div>`;
     wrap.appendChild(div);
   });
@@ -2709,6 +2714,7 @@ function renderGoals() {
     goal.member = card.querySelector('.e-member').value;
     goal.mainAccount = card.querySelector('.e-mainaccount').value.trim();
     goal.withdrawable = card.querySelector('.e-withdrawable').value;
+    goal.inactive = card.querySelector('.e-inactive').checked;
     editingGoalId = null;
     await saveGoals(); refreshGoalSelect(); refreshAccountList(); render();
   }));
@@ -2756,7 +2762,7 @@ function renderGoalWalletMonthlySummary() {
   const wrap = document.getElementById('goal-wallet-monthly-summary');
   if (!wrap) return;
   wrap.innerHTML = '';
-  const withMonthly = goals.filter(g => g.monthly && g.monthly > 0);
+  const withMonthly = goals.filter(g => g.monthly && g.monthly > 0 && !g.inactive);
   if (withMonthly.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีเป้าหมายที่ตั้งยอดต่องวด/เดือนไว้</p>'; return; }
   const groups = {};
   withMonthly.forEach(g => {
