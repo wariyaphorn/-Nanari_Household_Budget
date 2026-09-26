@@ -599,23 +599,31 @@
       <div id="wallets-manager"></div>
       <div class="form-grid g2">
         <input type="text" id="w-name" placeholder="ชื่อกระเป๋า เช่น Annual Bills">
-        <input type="number" id="w-initial" placeholder="ยอดเริ่มต้น (ก่อนใช้ระบบ)" min="0" step="0.01">
+        <select id="w-currency">
+          <option value="THB">บาท (฿)</option>
+          <option value="USD">ดอลลาร์สหรัฐ (USD)</option>
+        </select>
       </div>
       <div class="form-grid g2">
+        <input type="number" id="w-initial" placeholder="ยอดเริ่มต้น (ก่อนใช้ระบบ)" min="0" step="0.01">
         <select id="w-owner"></select>
+      </div>
+      <div class="form-grid g2">
         <select id="w-type">
           <option value="spending">กระเป๋าใช้จ่าย</option>
           <option value="saving">กระเป๋าออม/สำรอง</option>
         </select>
+        <select id="w-mainaccount"></select>
       </div>
       <div class="form-grid g2">
-        <select id="w-mainaccount"></select>
         <select id="w-locked">
           <option value="">สถานะการดึงมาใช้ (ไม่ระบุ)</option>
           <option value="no">ดึงมาใช้ได้ในกรณีจำเป็น</option>
           <option value="yes">ล็อกไว้ (ห้ามดึงมาใช้)</option>
         </select>
+        <div></div>
       </div>
+      <p class="muted" id="w-usd-preview" style="margin:0 0 8px;display:none;"></p>
       <button class="btn btn-primary" id="w-add">+ เพิ่มกระเป๋า</button>
       <p class="muted" style="margin-top:6px;">เลือกกระเป๋านี้จากลิสต์ได้ทุกที่ในระบบ (บันทึกรายการ, เป้าหมาย, ชำระบัตร ฯลฯ) แทนการพิมพ์ชื่อเอง ป้องกันสะกดไม่ตรงกัน</p>
     </div>
@@ -1014,6 +1022,34 @@ function refreshMainAccountSelects() {
 document.getElementById('f-date').value = toISO(new Date());
 
 function fmt(n) { return '฿' + n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtUsd(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+// ---- อัตราแลกเปลี่ยน USD -> THB (แคชไว้ 1 ครั้งต่อวันใน localStorage กันยิง API ถี่เกินไป) ----
+let usdRate = { rate: null, date: null }; // rate = กี่บาทต่อ 1 USD, date = วันที่ของเรทนั้น (ตามที่ API ให้มา)
+(function loadCachedUsdRate() {
+  try {
+    const cached = JSON.parse(localStorage.getItem('usd-thb-rate') || 'null');
+    if (cached && cached.rate) usdRate = { rate: cached.rate, date: cached.date };
+  } catch (e) {}
+})();
+async function refreshUsdRateIfStale() {
+  const today = toISO(new Date());
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem('usd-thb-rate') || 'null'); } catch (e) {}
+  if (cached && cached.fetchedAt === today) return; // ดึงมาแล้ววันนี้ ไม่ต้องยิงซ้ำ
+  try {
+    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=THB');
+    if (!res.ok) throw new Error('rate fetch failed');
+    const data = await res.json();
+    const rate = data && data.rates && data.rates.THB;
+    if (!rate) throw new Error('no rate in response');
+    usdRate = { rate, date: data.date || today };
+    try { localStorage.setItem('usd-thb-rate', JSON.stringify({ rate, date: usdRate.date, fetchedAt: today })); } catch (e) {}
+    render();
+  } catch (e) {
+    console.error('ดึงเรท USD ไม่สำเร็จ ใช้เรทล่าสุดที่แคชไว้แทน', e);
+  }
+}
 function toISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function fmtDateStr(iso) { return new Date(iso + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }); }
 function fmtDate(d) { return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }); }
@@ -1558,31 +1594,40 @@ function renderCards() {
 }
 
 function walletBalanceDetail(w) {
-  let total = w.initial || 0;
+  // หมายเหตุสกุลเงิน: กระเป๋าที่ w.currency === 'USD' เก็บตัวเลขทุกจุด (ยอดเริ่มต้น/รายการกระเป๋าเงิน) เป็นดอลลาร์
+  // (native) เหมือนกระเป๋าบาททั่วไปทุกอย่าง แค่หน่วยเป็น USD — แปลงเป็นบาทแค่ตอนสรุป "total" ท้ายฟังก์ชันนี้
+  // ที่เดียว เพื่อให้ทุกจุดในระบบที่เรียก walletBalance()/walletBalanceDetail().total ยังได้ค่าบาทเหมือนเดิม
+  // ไม่ต้องแก้อะไรที่อื่นเลย
+  const isUsd = w.currency === 'USD';
+  let nativeTotal = w.initial || 0;
   const items = [];
   if (w.initial) items.push({ name: 'ยอดเริ่มต้น', amount: w.initial, date: null, txId: null });
   entries.forEach(e => {
     if (e.account !== w.id) return;
     if (e.goal && (e.category === 'saving' || e.category === 'debt')) return;
     const amt = getCat(e.category).kind === 'income' ? e.amount : -e.amount;
-    total += amt;
+    nativeTotal += amt;
     items.push({ name: (e.note || getCat(e.category).label) + ' (' + e.date + ')', amount: amt, date: e.date, txId: null });
   });
   goals.forEach(g => {
     if (g.account !== w.id) return;
     const saved = goalSaved(g);
-    total += saved;
+    nativeTotal += saved;
     items.push({ name: g.name + ' (เป้าหมาย)', amount: saved, date: null, txId: null });
   });
   walletTransactions.forEach(t => {
     if (t.account !== w.id) return;
-    total += t.amount;
+    nativeTotal += t.amount;
     items.push({ name: (t.note || 'รายการกระเป๋า') + ' (' + t.date + ')', amount: t.amount, date: t.date, txId: t.id });
   });
   // เรียง: รายการที่ไม่มีวันที่ (ยอดเริ่มต้น/เป้าหมาย) ไว้บนสุดตามเดิม แล้วตามด้วยรายการที่มีวันที่ เรียงเก่า→ใหม่
   const undated = items.filter(it => !it.date);
   const dated = items.filter(it => it.date).sort((a, b) => a.date.localeCompare(b.date));
-  return { total, items: [...undated, ...dated] };
+  const sortedItems = [...undated, ...dated];
+  if (!isUsd) return { total: nativeTotal, items: sortedItems, currency: 'THB' };
+  const rate = usdRate.rate;
+  const total = rate ? nativeTotal * rate : 0;
+  return { total, items: sortedItems, currency: 'USD', native: nativeTotal, rate, rateDate: usdRate.date };
 }
 function walletBalance(w) { return walletBalanceDetail(w).total; }
 
@@ -1602,35 +1647,74 @@ function renderWalletsManager() {
 
     if (editingWalletId === w.id) {
       const ownerOptions = members.map(m => `<option value="${m.key}" ${m.key === w.owner ? 'selected' : ''}>${m.label}</option>`).join('');
+      const isUsdEdit = w.currency === 'USD';
       div.innerHTML = `
         <div class="form-grid g2">
           <input type="text" class="we-name" value="${w.name}" placeholder="ชื่อกระเป๋า">
-          <input type="number" class="we-initial" value="${w.initial || 0}" placeholder="ยอดเริ่มต้น" min="0" step="0.01">
+          <select class="we-currency">
+            <option value="THB" ${!isUsdEdit ? 'selected' : ''}>บาท (฿)</option>
+            <option value="USD" ${isUsdEdit ? 'selected' : ''}>ดอลลาร์สหรัฐ (USD)</option>
+          </select>
         </div>
         <div class="form-grid g2">
+          <div>
+            <p class="muted we-initial-label" style="margin:0 0 4px;">${isUsdEdit ? 'ยอดเริ่มต้น (USD)' : 'ยอดเริ่มต้น'}</p>
+            <input type="number" class="we-initial" value="${w.initial || 0}" min="0" step="0.01">
+          </div>
           <select class="we-owner">${ownerOptions}</select>
+        </div>
+        <div class="form-grid g2">
           <select class="we-type">
             <option value="spending" ${w.type === 'spending' ? 'selected' : ''}>กระเป๋าใช้จ่าย</option>
             <option value="saving" ${w.type === 'saving' ? 'selected' : ''}>กระเป๋าออม/สำรอง</option>
           </select>
+          <select class="we-mainaccount">${mainAccountOptions(w.mainAccount)}</select>
         </div>
         <div class="form-grid g2">
-          <select class="we-mainaccount">${mainAccountOptions(w.mainAccount)}</select>
           <select class="we-locked">
             <option value="" ${!w.locked ? 'selected' : ''}>สถานะการดึงมาใช้ (ไม่ระบุ)</option>
             <option value="no" ${w.locked === 'no' ? 'selected' : ''}>ดึงมาใช้ได้ในกรณีจำเป็น</option>
             <option value="yes" ${w.locked === 'yes' ? 'selected' : ''}>ล็อกไว้ (ห้ามดึงมาใช้)</option>
           </select>
+          <div></div>
         </div>
+        <p class="muted we-usd-preview" style="margin:0 0 8px;color:var(--usd, #2E6F8E);${isUsdEdit ? '' : 'display:none;'}"></p>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn" data-w-cancel="${w.id}">ยกเลิก</button>
           <button class="btn btn-primary" data-w-save="${w.id}">บันทึก</button>
         </div>`;
       wrap.appendChild(div);
+      const updateUsdPreview = () => {
+        const currencySel = div.querySelector('.we-currency').value;
+        const isUsdNow = currencySel === 'USD';
+        div.querySelector('.we-initial-label').textContent = isUsdNow ? 'ยอดเริ่มต้น (USD)' : 'ยอดเริ่มต้น';
+        const previewEl = div.querySelector('.we-usd-preview');
+        if (!isUsdNow) { previewEl.style.display = 'none'; return; }
+        const amt = parseFloat(div.querySelector('.we-initial').value) || 0;
+        if (usdRate.rate) {
+          previewEl.textContent = `≈ เรท ${usdRate.rate.toFixed(2)} บาท/USD (${usdRate.date}) → ${fmt(amt * usdRate.rate)}`;
+        } else {
+          previewEl.textContent = 'ยังไม่ทราบเรทแลกเปลี่ยน (ดึงเรทไม่สำเร็จ) — จะยังไม่ถูกนับรวมในยอดจนกว่าจะดึงเรทได้';
+        }
+        previewEl.style.display = '';
+      };
+      div.querySelector('.we-currency').addEventListener('change', updateUsdPreview);
+      div.querySelector('.we-initial').addEventListener('input', updateUsdPreview);
+      updateUsdPreview();
       return;
     }
 
-    const { total: balance, items: balanceItems } = walletBalanceDetail(w);
+    const balDetail = walletBalanceDetail(w);
+    const balance = balDetail.total;
+    const balanceItems = balDetail.items;
+    const isUsdWallet = balDetail.currency === 'USD';
+    const itemFmt = isUsdWallet ? fmtUsd : fmt;
+    const usdBadgeHtml = isUsdWallet ? ' <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:var(--sage);color:#fff;font-size:10.5px;font-weight:600;vertical-align:middle;">USD</span>' : '';
+    const usdRateLineHtml = isUsdWallet
+      ? (balDetail.rate
+        ? `<p class="muted" style="margin:2px 0 0;">${fmtUsd(balDetail.native)} → ${fmt(balance)} · เรท ${balDetail.rate.toFixed(2)} บาท/USD ณ ${balDetail.rateDate}</p>`
+        : `<p class="muted" style="margin:2px 0 0;color:var(--rust);">${fmtUsd(balDetail.native)} · ยังไม่ทราบเรทแลกเปลี่ยน (ดึงไม่สำเร็จ) จึงยังไม่นับรวมยอดบาท</p>`)
+      : '';
     const lockTag = w.locked === 'yes'
       ? '<p style="margin:6px 0 0;"><span class="muted" style="color:var(--rust);">ล็อกไว้ (ห้ามดึงมาใช้)</span></p>'
       : w.locked === 'no'
@@ -1649,7 +1733,7 @@ function renderWalletsManager() {
             ${monthsAvail.map(ym => `<option value="${ym}" ${selMonth === ym ? 'selected' : ''}>${monthLabel(ym)}</option>`).join('')}
           </select>` : '';
       if (selMonth === '' || !monthsAvail.length) {
-        detailHtml = `${monthSelectHtml}<div>${balanceItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('')}</div>`;
+        detailHtml = `${monthSelectHtml}<div>${balanceItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${itemFmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('')}</div>`;
       } else {
         const monthStart = selMonth + '-01';
         const before = datedItems.filter(it => it.date < monthStart).reduce((s, it) => s + it.amount, 0);
@@ -1659,32 +1743,35 @@ function renderWalletsManager() {
         const monthSum = monthItems.reduce((s, it) => s + it.amount, 0);
         const closingBalance = openingBalance + monthSum;
         detailHtml = `${monthSelectHtml}
-          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดยกมาต้นเดือน</span><span>${fmt(openingBalance)}</span></div>
-          <div>${monthItems.length ? monthItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${fmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('') : '<div class="muted" style="font-size:12px;padding:2px 0;">ไม่มีรายการเดือนนี้</div>'}</div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid var(--border);margin-top:4px;"><span>รวมรายการเดือนนี้</span><span>${monthSum >= 0 ? '+' : ''}${fmt(monthSum)}</span></div>
-          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดคงเหลือสิ้นเดือน</span><span>${fmt(closingBalance)}</span></div>`;
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดยกมาต้นเดือน</span><span>${itemFmt(openingBalance)}</span></div>
+          <div>${monthItems.length ? monthItems.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;padding:2px 0;"><span class="muted">${it.name} ${it.amount >= 0 ? '+' : ''}${itemFmt(it.amount)}</span>${it.txId ? `<button class="del-btn" data-del-wallet-tx="${it.txId}" aria-label="ลบรายการนี้">✕</button>` : ''}</div>`).join('') : '<div class="muted" style="font-size:12px;padding:2px 0;">ไม่มีรายการเดือนนี้</div>'}</div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-top:1px solid var(--border);margin-top:4px;"><span>รวมรายการเดือนนี้</span><span>${monthSum >= 0 ? '+' : ''}${itemFmt(monthSum)}</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0;font-weight:600;"><span>ยอดคงเหลือสิ้นเดือน</span><span>${itemFmt(closingBalance)}</span></div>`;
       }
     }
     const addingTx = addingTxWalletId === w.id;
     const addTxFormHtml = addingTx ? `
       <div style="margin-top:8px;padding:10px;background:var(--paper);border-radius:8px;">
+        ${isUsdWallet ? `<p class="muted" style="margin:0 0 8px;">กระเป๋านี้เก็บเป็นดอลลาร์ (USD) — กรอกจำนวนเป็น USD ระบบจะแปลงเป็นบาทให้เองตอนแสดงผล</p>` : ''}
         <div class="form-grid g2" style="margin-bottom:8px;">
           <select class="wtx-type">
             <option value="in">ฝากเข้า (+)</option>
             <option value="out">ถอนออก (-)</option>
           </select>
-          <input type="number" class="wtx-amount" min="0" step="0.01" placeholder="จำนวนเงิน">
+          <input type="number" class="wtx-amount" min="0" step="0.01" placeholder="จำนวนเงิน${isUsdWallet ? ' (USD)' : ''}">
         </div>
         <div class="form-grid g2" style="margin-bottom:8px;">
           <input type="date" class="wtx-date" value="${toISO(new Date())}">
           <input type="text" class="wtx-note" placeholder="โน้ต (ไม่บังคับ)">
         </div>
+        ${isUsdWallet ? `<p class="muted wtx-usd-preview" style="margin:0 0 8px;"></p>` : ''}
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn" data-wtx-cancel="${w.id}">ยกเลิก</button>
           <button class="btn btn-primary" data-wtx-confirm="${w.id}">บันทึก</button>
         </div>
       </div>` : '';
-    div.innerHTML = `<div class="row-between"><span>${w.name} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
+    div.innerHTML = `<div class="row-between"><span>${w.name}${usdBadgeHtml} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
+      ${usdRateLineHtml}
       ${lockTag}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
         ${balanceItems.length ? `<button class="btn" data-w-toggle-detail="${w.id}" style="font-size:12px;padding:4px 10px;">${isExpanded ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + balanceItems.length + ' รายการ) ▼'}</button>` : ''}
@@ -1740,8 +1827,22 @@ function renderWalletsManager() {
     addingTxWalletId = null;
     renderWalletsManager();
   }));
+  wrap.querySelectorAll('.wtx-usd-preview').forEach(previewEl => {
+    const card = previewEl.closest('.goal-card');
+    const amountInput = card.querySelector('.wtx-amount');
+    const updatePreview = () => {
+      const amt = parseFloat(amountInput.value) || 0;
+      previewEl.textContent = usdRate.rate
+        ? `≈ เรท ${usdRate.rate.toFixed(2)} บาท/USD (${usdRate.date}) → ${fmt(amt * usdRate.rate)}`
+        : 'ยังไม่ทราบเรทแลกเปลี่ยน (ดึงไม่สำเร็จ) — จะยังไม่นับรวมยอดบาทจนกว่าจะดึงเรทได้';
+    };
+    amountInput.addEventListener('input', updatePreview);
+    updatePreview();
+  });
   wrap.querySelectorAll('[data-wtx-confirm]').forEach(btn => btn.addEventListener('click', async () => {
     const walletId = btn.dataset.wtxConfirm;
+    const w = wallets.find(x => x.id === walletId);
+    const isUsdW = w && w.currency === 'USD';
     const card = btn.closest('.goal-card');
     const type = card.querySelector('.wtx-type').value;
     const amountRaw = parseFloat(card.querySelector('.wtx-amount').value);
@@ -1749,10 +1850,12 @@ function renderWalletsManager() {
     const note = card.querySelector('.wtx-note').value.trim();
     if (!amountRaw || amountRaw <= 0) return;
     const signedAmount = type === 'out' ? -amountRaw : amountRaw;
+    const autoNote = type === 'out' ? 'ถอนออก' : 'ฝากเข้า';
+    const usdRefNote = isUsdW && usdRate.rate ? ` (${fmtUsd(amountRaw)} × ${usdRate.rate.toFixed(2)} = ${fmt(amountRaw * usdRate.rate)})` : '';
     walletTransactions.push({
       id: genId(), date,
       account: walletId, amount: signedAmount,
-      note: note || (type === 'out' ? 'ถอนออก' : 'ฝากเข้า')
+      note: (note || autoNote) + (note ? '' : usdRefNote)
     });
     await saveWalletTransactions();
     addingTxWalletId = null;
@@ -1781,6 +1884,7 @@ function renderWalletsManager() {
     const name = div.querySelector('.we-name').value.trim();
     if (!name) return;
     w.name = name;
+    w.currency = div.querySelector('.we-currency').value === 'USD' ? 'USD' : 'THB';
     w.initial = parseFloat(div.querySelector('.we-initial').value) || 0;
     w.owner = div.querySelector('.we-owner').value;
     w.type = div.querySelector('.we-type').value;
@@ -3990,6 +4094,7 @@ async function load() {
   }
 
   refreshGoalSelect(); refreshPaymentSelect(); refreshWalletSelects(); refreshMainAccountSelects(); refreshAccountList(); refreshBillImportSelects(); render();
+  refreshUsdRateIfStale();
 }
 
 ['tab-all', 'tab-income', 'tab-expense'].forEach(id => {
@@ -4039,16 +4144,33 @@ document.getElementById('m-add').addEventListener('click', async () => {
   await saveMembers(); refreshMemberSelects(); render();
 });
 
+function updateWAddUsdPreview() {
+  const currencyEl = document.getElementById('w-currency');
+  const previewEl = document.getElementById('w-usd-preview');
+  const initialInput = document.getElementById('w-initial');
+  const isUsdNow = currencyEl.value === 'USD';
+  initialInput.placeholder = isUsdNow ? 'ยอดเริ่มต้น (USD)' : 'ยอดเริ่มต้น (ก่อนใช้ระบบ)';
+  if (!isUsdNow) { previewEl.style.display = 'none'; return; }
+  const amt = parseFloat(initialInput.value) || 0;
+  previewEl.textContent = usdRate.rate
+    ? `≈ เรท ${usdRate.rate.toFixed(2)} บาท/USD (${usdRate.date}) → ${fmt(amt * usdRate.rate)}`
+    : 'ยังไม่ทราบเรทแลกเปลี่ยน (ดึงไม่สำเร็จ) — จะยังไม่ถูกนับรวมในยอดจนกว่าจะดึงเรทได้';
+  previewEl.style.display = '';
+}
+document.getElementById('w-currency').addEventListener('change', updateWAddUsdPreview);
+document.getElementById('w-initial').addEventListener('input', updateWAddUsdPreview);
 document.getElementById('w-add').addEventListener('click', async () => {
   const name = document.getElementById('w-name').value.trim();
   if (!name) return;
+  const currency = document.getElementById('w-currency').value === 'USD' ? 'USD' : 'THB';
   const initial = parseFloat(document.getElementById('w-initial').value) || 0;
   const owner = wOwnerSelect.value;
   const type = document.getElementById('w-type').value;
   const mainAccount = document.getElementById('w-mainaccount').value.trim();
   const locked = document.getElementById('w-locked').value;
-  wallets.push({ id: genId(), name, initial, owner, type, mainAccount, locked });
-  document.getElementById('w-name').value = ''; document.getElementById('w-initial').value = ''; document.getElementById('w-mainaccount').value = ''; document.getElementById('w-locked').value = '';
+  wallets.push({ id: genId(), name, currency, initial, owner, type, mainAccount, locked });
+  document.getElementById('w-name').value = ''; document.getElementById('w-initial').value = ''; document.getElementById('w-mainaccount').value = ''; document.getElementById('w-locked').value = ''; document.getElementById('w-currency').value = 'THB';
+  updateWAddUsdPreview();
   await saveWallets(); refreshWalletSelects(); refreshAccountList(); render();
 });
 
