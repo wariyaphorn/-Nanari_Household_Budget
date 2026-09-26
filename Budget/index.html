@@ -647,6 +647,13 @@
 
   <section>
     <div class="card">
+      <h2>สรุปยอดกระเป๋าเงินตามการลงทุน</h2>
+      <div id="wallet-invested-summary"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
       <h2>บัญชี (แก้ไข / เพิ่ม / ลบ ได้)</h2>
       <div id="mainaccounts-manager"></div>
       <div class="form-grid g2">
@@ -1983,6 +1990,36 @@ function renderWalletTypeSummary() {
     const div = document.createElement('div');
     div.className = 'goal-card';
     div.innerHTML = `<div class="row-between"><span style="color:${typeColors[key]};">${typeLabels[key]} (${grouped[key].items.length})</span><span style="font-weight:600;">${fmt(grouped[key].total)}</span></div>
+      <p class="muted" style="margin:4px 0 0;">${grouped[key].items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>`;
+    wrap.appendChild(div);
+  });
+}
+
+function renderWalletInvestedSummary() {
+  const wrap = document.getElementById('wallet-invested-summary');
+  wrap.innerHTML = '';
+  if (wallets.length === 0) { wrap.innerHTML = '<p class="empty">ยังไม่มีกระเป๋าเงิน เพิ่มกระเป๋าก่อนเพื่อดูสรุปที่นี่</p>'; return; }
+  const groupLabels = { invested: 'เพื่อการลงทุน', other: 'ไม่ใช่การลงทุน' };
+  const groupColors = { invested: 'var(--gold)', other: 'var(--text-muted)' };
+  const grouped = { invested: { total: 0, items: [] }, other: { total: 0, items: [] } };
+  let grandTotal = 0;
+  wallets.forEach(w => {
+    const bal = walletBalance(w);
+    const key = w.invested ? 'invested' : 'other';
+    grouped[key].total += bal;
+    grouped[key].items.push({ name: w.name, amount: bal });
+    grandTotal += bal;
+  });
+  const totalDiv = document.createElement('div');
+  totalDiv.className = 'goal-card';
+  totalDiv.style.background = 'var(--paper)';
+  totalDiv.innerHTML = `<div class="row-between"><span style="font-weight:600;">รวมทั้งหมด</span><span style="font-weight:600;">${fmt(grandTotal)}</span></div>`;
+  wrap.appendChild(totalDiv);
+  ['invested', 'other'].forEach(key => {
+    if (grouped[key].items.length === 0) return;
+    const div = document.createElement('div');
+    div.className = 'goal-card';
+    div.innerHTML = `<div class="row-between"><span style="color:${groupColors[key]};">${groupLabels[key]} (${grouped[key].items.length})</span><span style="font-weight:600;">${fmt(grouped[key].total)}</span></div>
       <p class="muted" style="margin:4px 0 0;">${grouped[key].items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>`;
     wrap.appendChild(div);
   });
@@ -3912,6 +3949,7 @@ function render() {
   renderWalletsManager();
   renderWalletStatusSummary();
   renderWalletTypeSummary();
+  renderWalletInvestedSummary();
   renderMainAccountsManager();
 }
 
