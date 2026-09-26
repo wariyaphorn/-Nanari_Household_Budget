@@ -621,7 +621,9 @@
           <option value="no">ดึงมาใช้ได้ในกรณีจำเป็น</option>
           <option value="yes">ล็อกไว้ (ห้ามดึงมาใช้)</option>
         </select>
-        <div></div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);">
+          <input type="checkbox" id="w-invested"> เพื่อการลงทุน
+        </label>
       </div>
       <p class="muted" id="w-usd-preview" style="margin:0 0 8px;display:none;"></p>
       <button class="btn btn-primary" id="w-add">+ เพิ่มกระเป๋า</button>
@@ -1635,6 +1637,7 @@ let editingWalletId = null;
 let expandedWalletDetails = new Set();
 let walletDetailMonth = {};
 let addingTxWalletId = null;
+let expandedMainAccountDetails = new Set();
 
 function renderWalletsManager() {
   const wrap = document.getElementById('wallets-manager');
@@ -1676,7 +1679,9 @@ function renderWalletsManager() {
             <option value="no" ${w.locked === 'no' ? 'selected' : ''}>ดึงมาใช้ได้ในกรณีจำเป็น</option>
             <option value="yes" ${w.locked === 'yes' ? 'selected' : ''}>ล็อกไว้ (ห้ามดึงมาใช้)</option>
           </select>
-          <div></div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);">
+            <input type="checkbox" class="we-invested" ${w.invested ? 'checked' : ''}> เพื่อการลงทุน
+          </label>
         </div>
         <p class="muted we-usd-preview" style="margin:0 0 8px;color:var(--usd, #2E6F8E);${isUsdEdit ? '' : 'display:none;'}"></p>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
@@ -1710,6 +1715,7 @@ function renderWalletsManager() {
     const isUsdWallet = balDetail.currency === 'USD';
     const itemFmt = isUsdWallet ? fmtUsd : fmt;
     const usdBadgeHtml = isUsdWallet ? ' <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:var(--sage);color:#fff;font-size:10.5px;font-weight:600;vertical-align:middle;">USD</span>' : '';
+    const investedBadgeHtml = w.invested ? ' <span style="display:inline-block;padding:1px 7px;border-radius:10px;background:var(--gold);color:#fff;font-size:10.5px;font-weight:600;vertical-align:middle;">📈 ลงทุน</span>' : '';
     const usdRateLineHtml = isUsdWallet
       ? (balDetail.rate
         ? `<p class="muted" style="margin:2px 0 0;">${fmtUsd(balDetail.native)} → ${fmt(balance)} · เรท ${balDetail.rate.toFixed(2)} บาท/USD ณ ${balDetail.rateDate}</p>`
@@ -1770,7 +1776,7 @@ function renderWalletsManager() {
           <button class="btn btn-primary" data-wtx-confirm="${w.id}">บันทึก</button>
         </div>
       </div>` : '';
-    div.innerHTML = `<div class="row-between"><span>${w.name}${usdBadgeHtml} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
+    div.innerHTML = `<div class="row-between"><span>${w.name}${usdBadgeHtml}${investedBadgeHtml} <span class="muted">· ${w.type === 'saving' ? 'ออม/สำรอง' : 'ใช้จ่าย'} · ${memberLabel(w.owner)}${w.mainAccount ? ' · บัญชี: ' + mainAccountLabel(w.mainAccount) : ''}</span></span><span style="font-weight:600;">${fmt(balance)}</span></div>
       ${usdRateLineHtml}
       ${lockTag}
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -1890,6 +1896,7 @@ function renderWalletsManager() {
     w.type = div.querySelector('.we-type').value;
     w.mainAccount = div.querySelector('.we-mainaccount').value.trim();
     w.locked = div.querySelector('.we-locked').value;
+    w.invested = div.querySelector('.we-invested').checked;
     editingWalletId = null;
     await saveWallets(); refreshWalletSelects(); refreshAccountList(); render();
   }));
@@ -2231,7 +2238,8 @@ function renderMainAccountsManager() {
         <button class="del-btn" data-del-ma="${a.id}" aria-label="ลบบัญชี">✕</button>
       </div>
       ${statusParts.length ? `<p class="muted" style="margin:8px 0 0;">${statusParts.join(' · ')}</p>` : ''}
-      ${items.length ? `<p class="muted" style="margin:4px 0 0;">${items.map(it => it.name + ' ' + fmt(it.amount)).join(' · ')}</p>` : '<p class="muted" style="margin:4px 0 0;">ยังไม่มีกระเป๋าเงิน/เป้าหมายผูกกับบัญชีนี้</p>'}
+      ${items.length ? `<button class="btn" data-ma-toggle-detail="${a.id}" style="margin-top:8px;font-size:12px;padding:4px 10px;">${expandedMainAccountDetails.has(a.id) ? 'ซ่อนรายละเอียด ▲' : 'ดูรายละเอียด (' + items.length + ' รายการ) ▼'}</button>
+      ${expandedMainAccountDetails.has(a.id) ? `<div style="margin-top:4px;">${items.map(it => `<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12.5px;padding:3px 0;"><span class="muted">${it.name}</span><span>${fmt(it.amount)}</span></div>`).join('')}</div>` : ''}` : '<p class="muted" style="margin:4px 0 0;">ยังไม่มีกระเป๋าเงิน/เป้าหมายผูกกับบัญชีนี้</p>'}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
         <span class="drag-handle" data-drag-handle style="font-size:18px;color:var(--text-secondary);padding:4px 8px;user-select:none;">⠿</span>
         <button class="btn" data-ma-move-up="${a.id}" ${aIdx === 0 ? 'disabled style="opacity:0.4;"' : ''}>▲</button>
@@ -2267,6 +2275,11 @@ function renderMainAccountsManager() {
       if (a) { a.owner = sel.value; await saveMainAccounts(); render(); }
     });
   });
+  wrap.querySelectorAll('[data-ma-toggle-detail]').forEach(btn => btn.addEventListener('click', () => {
+    const id = btn.dataset.maToggleDetail;
+    if (expandedMainAccountDetails.has(id)) expandedMainAccountDetails.delete(id); else expandedMainAccountDetails.add(id);
+    renderMainAccountsManager();
+  }));
   wrap.querySelectorAll('[data-del-ma]').forEach(btn => {
     btn.addEventListener('click', async () => {
       const delId = btn.dataset.delMa;
@@ -4168,8 +4181,9 @@ document.getElementById('w-add').addEventListener('click', async () => {
   const type = document.getElementById('w-type').value;
   const mainAccount = document.getElementById('w-mainaccount').value.trim();
   const locked = document.getElementById('w-locked').value;
-  wallets.push({ id: genId(), name, currency, initial, owner, type, mainAccount, locked });
-  document.getElementById('w-name').value = ''; document.getElementById('w-initial').value = ''; document.getElementById('w-mainaccount').value = ''; document.getElementById('w-locked').value = ''; document.getElementById('w-currency').value = 'THB';
+  const invested = document.getElementById('w-invested').checked;
+  wallets.push({ id: genId(), name, currency, initial, owner, type, mainAccount, locked, invested });
+  document.getElementById('w-name').value = ''; document.getElementById('w-initial').value = ''; document.getElementById('w-mainaccount').value = ''; document.getElementById('w-locked').value = ''; document.getElementById('w-currency').value = 'THB'; document.getElementById('w-invested').checked = false;
   updateWAddUsdPreview();
   await saveWallets(); refreshWalletSelects(); refreshAccountList(); render();
 });
